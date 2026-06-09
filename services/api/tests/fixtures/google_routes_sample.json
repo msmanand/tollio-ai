@@ -1,0 +1,43 @@
+{
+  "routes": [
+    {
+      "duration": "2520s",
+      "distanceMeters": 48280,
+      "routeLabels": ["DEFAULT_ROUTE"],
+      "polyline": {
+        "encodedPolyline": "sample_live_google_polyline"
+      },
+      "travelAdvisory": {
+        "tollInfo": {
+          "estimatedPrice": [
+            {
+              "currencyCode": "USD",
+              "units": "7",
+              "nanos": 250000000
+            }
+          ]
+        }
+      },
+      "legs": [
+        {
+          "steps": [
+            {
+              "distanceMeters": 16093,
+              "staticDuration": "900s",
+              "navigationInstruction": {
+                "instructions": "Take Dallas North Tollway south"
+              }
+            },
+            {
+              "distanceMeters": 32187,
+              "staticDuration": "1620s",
+              "navigationInstruction": {
+                "instructions": "Continue toward Downtown Dallas"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

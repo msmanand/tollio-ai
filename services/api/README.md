@@ -4,6 +4,8 @@ FastAPI backend contracts for the Tollio AI agentic commute planning flow.
 
 This service currently uses deterministic placeholder responses only. It does not call Gemini, Google Routes API, MongoDB, MCP, or any external paid API.
 
+Live Google Routes support is gated. Leave `ENABLE_LIVE_ROUTES=false` for mock mode. To run a live smoke test intentionally, provide `GOOGLE_MAPS_API_KEY`, set `ENABLE_LIVE_ROUTES=true`, start the API, and call the commute plan endpoint. Do not commit real keys.
+
 ## Verification
 
 Setup command:
