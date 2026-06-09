@@ -49,6 +49,7 @@ def test_commute_plan_returns_expected_fields():
     assert expected_fields.issubset(body.keys())
     assert body["optimized_route_cost"] == 6.25
     assert body["estimated_savings"] == 4.5
+    assert body["optimized_route_polyline"] == "placeholder_exit_legacy_reenter_north_dallas"
     assert any(
         decision["action"] == "exit_before_gantry"
         for decision in body["gantry_decisions"]
@@ -69,3 +70,22 @@ def test_gantry_decisions_not_empty_for_sample_route():
 
     assert response.status_code == 200
     assert response.json()["gantry_decisions"]
+
+
+def test_commute_plan_includes_route_segments_from_adapter():
+    response = client.post("/api/v1/commute/plan", json=_sample_request())
+
+    assert response.status_code == 200
+    route_segments = response.json()["route_segments"]
+    assert route_segments
+    assert route_segments[0]["road_name"] == "Dallas North Tollway"
+    assert "distance_miles" in route_segments[0]
+
+
+def test_commute_plan_includes_map_markers_from_adapter():
+    response = client.post("/api/v1/commute/plan", json=_sample_request())
+
+    assert response.status_code == 200
+    map_markers = response.json()["map_markers"]
+    assert map_markers
+    assert any(marker["marker_type"] == "exit" for marker in map_markers)

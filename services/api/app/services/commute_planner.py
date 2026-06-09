@@ -1,12 +1,11 @@
+from app.adapters.google_routes_adapter import NormalizedRouteOption, get_route_options
 from app.models import (
     CommutePlanRequest,
     CommutePlanResponse,
     GantryAction,
     GantryDecision,
     MapMarker,
-    MarkerType,
     RouteSegment,
-    SegmentType,
 )
 
 
@@ -28,18 +27,29 @@ def _is_frisco_to_downtown_dallas(request: CommutePlanRequest) -> bool:
 def _frisco_to_downtown_dallas_plan(
     request: CommutePlanRequest,
 ) -> CommutePlanResponse:
+    route_options = get_route_options(
+        request.origin,
+        request.destination,
+        request.arrival_time,
+        request.urgency_mode.value,
+    )
+    natural_route = _find_route(route_options, "natural_full_toll")
+    optimized_route = _find_route(route_options, "optimized_gantry_plan")
+    optimized_segments = _to_route_segments(optimized_route)
+    optimized_markers = _to_map_markers(optimized_route)
+
     return CommutePlanResponse(
         recommended_route_summary=(
             "Use the high-value Dallas North Tollway segments from Frisco, "
             "exit before the low-value Legacy-area scanner, then reenter "
             "after the congestion pinch point toward Downtown Dallas."
         ),
-        natural_route_cost=10.75,
-        optimized_route_cost=6.25,
-        estimated_savings=4.50,
-        added_minutes=5,
+        natural_route_cost=natural_route.estimated_toll_cost,
+        optimized_route_cost=optimized_route.estimated_toll_cost,
+        estimated_savings=round(natural_route.estimated_toll_cost - optimized_route.estimated_toll_cost, 2),
+        added_minutes=max(optimized_route.total_minutes - natural_route.total_minutes, 0),
         budget_impact=(
-            f"Optimized toll spend is $6.25, leaving ${request.daily_budget - 6.25:.2f} "
+            f"Optimized toll spend is ${optimized_route.estimated_toll_cost:.2f}, leaving ${request.daily_budget - optimized_route.estimated_toll_cost:.2f} "
             f"of the ${request.daily_budget:.2f} daily budget."
         ),
         gantry_decisions=[
@@ -81,80 +91,25 @@ def _frisco_to_downtown_dallas_plan(
         data_sources_used=[
             "deterministic_placeholder_contract",
             "founder_defined_sample_scenario",
+            optimized_route.data_source,
         ],
-        map_route_polyline="placeholder_optimized_frisco_to_downtown_dallas",
-        natural_route_polyline="placeholder_natural_dnt_full_toll_route",
-        optimized_route_polyline="placeholder_exit_legacy_reenter_north_dallas",
-        route_segments=[
-            RouteSegment(
-                segment_label="Segment A",
-                road_name="Dallas North Tollway",
-                start_location="Frisco",
-                end_location="Legacy Drive",
-                segment_type=SegmentType.toll,
-                estimated_minutes=18,
-                estimated_cost=4.25,
-            ),
-            RouteSegment(
-                segment_label="Segment B",
-                road_name="Legacy Drive Service Road",
-                start_location="Legacy Drive Exit",
-                end_location="North Dallas Reentry",
-                segment_type=SegmentType.service_road,
-                estimated_minutes=8,
-                estimated_cost=0.0,
-            ),
-            RouteSegment(
-                segment_label="Segment C",
-                road_name="Dallas North Tollway",
-                start_location="North Dallas Reentry",
-                end_location="Downtown Dallas",
-                segment_type=SegmentType.toll,
-                estimated_minutes=20,
-                estimated_cost=2.0,
-            ),
-        ],
-        map_markers=[
-            MapMarker(
-                marker_type=MarkerType.origin,
-                label="Frisco",
-                latitude=33.1507,
-                longitude=-96.8236,
-                description="Placeholder origin for the sample commute.",
-            ),
-            MapMarker(
-                marker_type=MarkerType.gantry,
-                label="DNT Frisco Mainline",
-                latitude=33.0931,
-                longitude=-96.8211,
-                description="High-value toll segment recommended to keep.",
-            ),
-            MapMarker(
-                marker_type=MarkerType.exit,
-                label="Exit before Legacy scanner",
-                latitude=33.0735,
-                longitude=-96.8218,
-                description="Skip the low-value gantry with small time impact.",
-            ),
-            MapMarker(
-                marker_type=MarkerType.reentry,
-                label="Reenter North Dallas",
-                latitude=32.9541,
-                longitude=-96.8204,
-                description="Rejoin toll route after the low-value scanner.",
-            ),
-            MapMarker(
-                marker_type=MarkerType.destination,
-                label="Downtown Dallas",
-                latitude=32.7767,
-                longitude=-96.7970,
-                description="Placeholder destination for the sample commute.",
-            ),
-        ],
+        map_route_polyline=optimized_route.polyline,
+        natural_route_polyline=natural_route.polyline,
+        optimized_route_polyline=optimized_route.polyline,
+        route_segments=optimized_segments,
+        map_markers=optimized_markers,
     )
 
 
 def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanResponse:
+    route_options = get_route_options(
+        request.origin,
+        request.destination,
+        request.arrival_time,
+        request.urgency_mode.value,
+    )
+    route = route_options[0]
+
     return CommutePlanResponse(
         recommended_route_summary=(
             "Placeholder contract response. Gantry-level optimization will be "
@@ -184,34 +139,48 @@ def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanRespons
         ),
         confidence_level="contract_placeholder",
         data_sources_used=["deterministic_placeholder_contract"],
-        map_route_polyline="placeholder_generic_route",
-        natural_route_polyline="placeholder_generic_natural_route",
-        optimized_route_polyline="placeholder_generic_optimized_route",
-        route_segments=[
-            RouteSegment(
-                segment_label="Placeholder segment",
-                road_name="Unknown",
-                start_location=request.origin,
-                end_location=request.destination,
-                segment_type=SegmentType.local_road,
-                estimated_minutes=0,
-                estimated_cost=0.0,
-            )
-        ],
-        map_markers=[
-            MapMarker(
-                marker_type=MarkerType.origin,
-                label=request.origin,
-                latitude=0.0,
-                longitude=0.0,
-                description="Placeholder origin marker.",
-            ),
-            MapMarker(
-                marker_type=MarkerType.destination,
-                label=request.destination,
-                latitude=0.0,
-                longitude=0.0,
-                description="Placeholder destination marker.",
-            ),
-        ],
+        map_route_polyline=route.polyline,
+        natural_route_polyline=route.polyline,
+        optimized_route_polyline=route.polyline,
+        route_segments=_to_route_segments(route),
+        map_markers=_to_map_markers(route),
     )
+
+
+def _find_route(
+    route_options: list[NormalizedRouteOption],
+    route_id: str,
+) -> NormalizedRouteOption:
+    for route in route_options:
+        if route.route_id == route_id:
+            return route
+    return route_options[0]
+
+
+def _to_route_segments(route: NormalizedRouteOption) -> list[RouteSegment]:
+    return [
+        RouteSegment(
+            segment_label=segment.segment_label,
+            road_name=segment.road_name,
+            start_location=segment.start_location,
+            end_location=segment.end_location,
+            segment_type=segment.segment_type,
+            estimated_minutes=segment.estimated_minutes,
+            estimated_cost=segment.estimated_cost,
+            distance_miles=segment.distance_miles,
+        )
+        for segment in route.segments
+    ]
+
+
+def _to_map_markers(route: NormalizedRouteOption) -> list[MapMarker]:
+    return [
+        MapMarker(
+            marker_type=marker.marker_type,
+            label=marker.label,
+            latitude=marker.latitude,
+            longitude=marker.longitude,
+            description=marker.description,
+        )
+        for marker in route.map_markers
+    ]

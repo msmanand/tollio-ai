@@ -71,6 +71,7 @@ class RouteSegment(BaseModel):
     segment_type: SegmentType
     estimated_minutes: int
     estimated_cost: float
+    distance_miles: float = 0.0
 
 
 class MapMarker(BaseModel):
