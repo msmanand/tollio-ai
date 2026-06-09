@@ -4,6 +4,8 @@ FastAPI backend contracts for the Tollio AI agentic commute planning flow.
 
 This service currently uses deterministic placeholder responses only. It does not call Gemini, Google Routes API, MongoDB, MCP, or any external paid API.
 
+MongoDB Atlas persistence is gated. Leave `TOLLIO_STORAGE_MODE=mock` for local tests. To run a live smoke test intentionally, set `TOLLIO_STORAGE_MODE=mongodb`, provide `MONGODB_URI`, and call `/api/v1/trips/save` or `/api/v1/budget/status`. Do not commit real MongoDB URIs.
+
 ## Verification
 
 Setup command:

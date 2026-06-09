@@ -108,6 +108,7 @@ class TripSaveRequest(BaseModel):
 class TripSaveResponse(BaseModel):
     status: str
     message: str
+    saved_trip_id: str
 
 
 class BudgetStatusResponse(BaseModel):
