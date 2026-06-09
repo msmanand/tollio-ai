@@ -1,13 +1,13 @@
 # Tollio AI Prompt Backlog
 
-| Prompt ID | Branch | Status | Commit Hash | Tests Run | Notes |
-| --- | --- | --- | --- | --- | --- |
-| TOL-P00-FOUNDATION-REPO | tol/p00-foundation-repo | Verified | 19ed1e5e02ac2ad60ae3c4ea1dbcbc454eef7243 | `git status`; `npm install` failed: npm unavailable; `npm run --if-present lint` failed: npm unavailable; `npm run --if-present test` failed: npm unavailable | Foundation scaffold verified by TOL-P00-FOUNDATION-REPO-VERIFY; no product features added. |
-| TOL-P00A-ENVIRONMENT-BOOTSTRAP | tol/p00a-environment-bootstrap | Complete | Final hash reported in verification output | `node -v`; `npm -v`; `git --version`; `python --version`; `python3 --version`; `pip --version`; `pip3 --version`; `npm install`; `npm run --if-present lint`; `npm run --if-present test` | Environment bootstrap completed with Node 22 installed via existing nvm; automatic shell loading should be configured with the documented `.zshrc` snippet if needed. |
-| TOL-P01-API-CONTRACTS | tol/p01-api-contracts | Complete | Final hash reported in verification output | `cd services/api`; `python3 -m venv .venv`; `source .venv/bin/activate`; `pip install -r requirements.txt`; `pytest`; `python -c "from main import app; print(app.title)"` | Added FastAPI backend contracts, deterministic commute planner placeholder, map-ready route fields, and tests; no external APIs called. |
-| TOL-P02-AGENT-GEMINI-ADK | tol/p02-agent-gemini-adk | Not Started | TBD | TBD | Set up Gemini / Google Cloud Agent Builder / ADK agent foundation. |
-| TOL-P03-MCP-MONGODB | tol/p03-mcp-mongodb | Not Started | TBD | TBD | Add MCP and MongoDB partner track integration plan. |
-| TOL-P04-ROUTES-GOOGLE | tol/p04-routes-google | Not Started | TBD | TBD | Add Google Routes API integration plan. |
-| TOL-P05-ENGINE-GANTRY | tol/p05-engine-gantry | Not Started | TBD | TBD | Implement Gantry Intelligence Engine in a later prompt. |
-| TOL-P06-MOBILE-DEMO | tol/p06-mobile-demo | Not Started | TBD | TBD | Build mobile demo experience in a later prompt. |
-| TOL-P07-HACKATHON-SUBMISSION | tol/p07-hackathon-submission | Not Started | TBD | TBD | Package hackathon submission materials. |
+| Prompt ID | Branch | Status | Commit Hash | Tests Run | Artifact Produced | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| TOL-P00-FOUNDATION-REPO | tol/p00-foundation-repo | Verified | 19ed1e5e02ac2ad60ae3c4ea1dbcbc454eef7243 | `git status`; `npm install` failed: npm unavailable; `npm run --if-present lint` failed: npm unavailable; `npm run --if-present test` failed: npm unavailable | Traceable foundation repo | Foundation scaffold verified by TOL-P00-FOUNDATION-REPO-VERIFY; no product features added. |
+| TOL-P00A-ENVIRONMENT-BOOTSTRAP | tol/p00a-environment-bootstrap | Complete | Final hash reported in verification output | `node -v`; `npm -v`; `git --version`; `python --version`; `python3 --version`; `pip --version`; `pip3 --version`; `npm install`; `npm run --if-present lint`; `npm run --if-present test` | Local dev setup guide | Environment bootstrap completed with Node 22 installed via existing nvm; automatic shell loading should be configured with the documented `.zshrc` snippet if needed. |
+| TOL-P01-API-CONTRACTS | tol/p01-api-contracts | Complete | Final hash reported in verification output | `cd services/api`; `python3 -m venv .venv`; `source .venv/bin/activate`; `pip install -r requirements.txt`; `pytest`; `python -c "from main import app; print(app.title)"` | FastAPI commute planning contracts | Added FastAPI backend contracts, deterministic commute planner placeholder, map-ready route fields, and tests; no external APIs called. |
+| TOL-P02-AGENT-GEMINI-ADK | tol/p02-agent-gemini-adk | Complete | Final hash reported in verification output | `cd services/agent`; `python3 -m venv .venv`; `source .venv/bin/activate`; `pip install -r requirements.txt`; `pytest` | Tollio Gemini/ADK agent skeleton with mock tool orchestration | Added single mock-mode commute agent and five deterministic tools; no external APIs called. |
+| TOL-P03-MCP-MONGODB | tol/p03-mcp-mongodb | Not Started | TBD | TBD | TBD | Add MCP and MongoDB partner track integration plan. |
+| TOL-P04-ROUTES-GOOGLE | tol/p04-routes-google | Not Started | TBD | TBD | TBD | Add Google Routes API integration plan. |
+| TOL-P05-ENGINE-GANTRY | tol/p05-engine-gantry | Not Started | TBD | TBD | TBD | Implement Gantry Intelligence Engine in a later prompt. |
+| TOL-P06-MOBILE-DEMO | tol/p06-mobile-demo | Not Started | TBD | TBD | TBD | Build mobile demo experience in a later prompt. |
+| TOL-P07-HACKATHON-SUBMISSION | tol/p07-hackathon-submission | Not Started | TBD | TBD | TBD | Package hackathon submission materials. |
