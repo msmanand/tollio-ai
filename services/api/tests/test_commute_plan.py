@@ -70,6 +70,10 @@ def test_gantry_decisions_not_empty_for_sample_route():
 
     assert response.status_code == 200
     assert response.json()["gantry_decisions"]
+    assert any(
+        "selected budget" in decision["budget_effect"]
+        for decision in response.json()["gantry_decisions"]
+    )
 
 
 def test_commute_plan_includes_route_segments_from_adapter():

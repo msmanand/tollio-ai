@@ -2,11 +2,11 @@ from app.adapters.google_routes_adapter import NormalizedRouteOption, get_route_
 from app.models import (
     CommutePlanRequest,
     CommutePlanResponse,
-    GantryAction,
     GantryDecision,
     MapMarker,
     RouteSegment,
 )
+from app.services.gantry_engine import score_gantry_decisions
 
 
 def build_commute_plan(request: CommutePlanRequest) -> CommutePlanResponse:
@@ -37,6 +37,15 @@ def _frisco_to_downtown_dallas_plan(
     optimized_route = _find_route(route_options, "optimized_gantry_plan")
     optimized_segments = _to_route_segments(optimized_route)
     optimized_markers = _to_map_markers(optimized_route)
+    gantry_decisions = score_gantry_decisions(
+        route_option=optimized_route,
+        urgency_mode=request.urgency_mode,
+        budget_period=request.budget_period,
+        daily_budget=request.daily_budget,
+        weekly_budget=request.weekly_budget,
+        monthly_budget=request.monthly_budget,
+        avoid_excessive_signals=request.avoid_excessive_signals,
+    )
 
     return CommutePlanResponse(
         recommended_route_summary=(
@@ -52,40 +61,12 @@ def _frisco_to_downtown_dallas_plan(
             f"Optimized toll spend is ${optimized_route.estimated_toll_cost:.2f}, leaving ${request.daily_budget - optimized_route.estimated_toll_cost:.2f} "
             f"of the ${request.daily_budget:.2f} daily budget."
         ),
-        gantry_decisions=[
-            GantryDecision(
-                gantry_name_or_segment="DNT Frisco Mainline Segment",
-                action=GantryAction.stay_on_toll,
-                toll_cost_avoided=0.0,
-                added_minutes=0,
-                budget_effect="Worth paying because it saves meaningful commute time.",
-                value_score=0.91,
-                reason="This segment avoids slow arterial traffic with strong minutes-per-dollar value.",
-            ),
-            GantryDecision(
-                gantry_name_or_segment="Legacy Drive Low-Value Gantry",
-                action=GantryAction.exit_before_gantry,
-                toll_cost_avoided=3.10,
-                added_minutes=3,
-                budget_effect="Avoids an unnecessary scanner and keeps the trip under the daily budget.",
-                value_score=0.28,
-                reason="The toll is high relative to the small time savings for this segment.",
-            ),
-            GantryDecision(
-                gantry_name_or_segment="North Dallas Reentry Segment",
-                action=GantryAction.reenter_after_gantry,
-                toll_cost_avoided=1.40,
-                added_minutes=2,
-                budget_effect="Preserves budget while still using the faster downtown approach.",
-                value_score=0.72,
-                reason="Reentering after the skipped scanner balances cost and arrival reliability.",
-            ),
-        ],
+        gantry_decisions=gantry_decisions,
         explanation=(
-            "The placeholder Gantry Intelligence Engine treats each gantry or segment "
-            "as a separate value decision. It pays for the segments with strong time "
-            "savings, skips one low-value scanner, and shows the budget impact before "
-            "future Google Routes, Gemini, MCP, or MongoDB integrations are connected."
+            "The deterministic Gantry Intelligence Engine scores each gantry or segment "
+            "as a separate value decision. It compares toll avoided, added minutes, "
+            "signal penalty, budget remaining, and urgency mode before future Gemini, "
+            "MCP, MongoDB, or live toll integrations are connected."
         ),
         confidence_level="contract_placeholder",
         data_sources_used=[
@@ -109,6 +90,15 @@ def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanRespons
         request.urgency_mode.value,
     )
     route = route_options[0]
+    gantry_decisions = score_gantry_decisions(
+        route_option=route,
+        urgency_mode=request.urgency_mode,
+        budget_period=request.budget_period,
+        daily_budget=request.daily_budget,
+        weekly_budget=request.weekly_budget,
+        monthly_budget=request.monthly_budget,
+        avoid_excessive_signals=request.avoid_excessive_signals,
+    )
 
     return CommutePlanResponse(
         recommended_route_summary=(
@@ -122,17 +112,7 @@ def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanRespons
         budget_impact=(
             f"No toll impact estimated yet for the {request.budget_period.value} budget."
         ),
-        gantry_decisions=[
-            GantryDecision(
-                gantry_name_or_segment="Placeholder segment",
-                action=GantryAction.avoid_toll,
-                toll_cost_avoided=0.0,
-                added_minutes=0,
-                budget_effect="No budget impact in placeholder mode.",
-                value_score=0.0,
-                reason="External route and toll data are intentionally not connected yet.",
-            )
-        ],
+        gantry_decisions=gantry_decisions,
         explanation=(
             "This deterministic placeholder preserves the response shape for future "
             "Gemini, Google Routes API, MCP, and MongoDB integrations."
