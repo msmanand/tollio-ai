@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+.npm/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+build/
+coverage/
+.turbo/
+
+# Expo / React Native
+.expo/
+web-build/
+
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+
+# Local OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Pre-existing local prototype outside this foundation workspace.
+/tollio/

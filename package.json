@@ -1,0 +1,18 @@
+{
+  "name": "tollio-ai",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Traceable foundation for Tollio AI.",
+  "workspaces": [
+    "apps/mobile",
+    "services/api",
+    "services/agent",
+    "packages/shared"
+  ],
+  "scripts": {
+    "test": "echo \"No tests configured for foundation scaffold\""
+  },
+  "engines": {
+    "node": ">=22 <23"
+  }
+}
