@@ -1,3 +1,4 @@
+from app.config import SystemStatus, get_system_status
 from app.models import (
     BudgetStatusResponse,
     CommutePlanRequest,
@@ -17,6 +18,11 @@ router = APIRouter()
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@router.get("/api/v1/system/status", response_model=SystemStatus)
+def system_status() -> SystemStatus:
+    return get_system_status()
 
 
 @router.post("/api/v1/commute/plan", response_model=CommutePlanResponse)
