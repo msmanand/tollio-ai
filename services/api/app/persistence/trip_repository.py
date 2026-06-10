@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from app.persistence.models import RecentTrips, SavingsSummary, TripDecisionRecord
 from app.persistence.mongodb_client import get_database, should_use_mongodb
@@ -16,11 +16,11 @@ class TripRepository:
         self,
         commute_plan_id: str,
         user_label: str,
-        route_summary: str = "Mock saved commute decision",
+        route_summary: str = "Saved Tollio commute decision",
         estimated_savings: float = 0.0,
         optimized_route_cost: float = 0.0,
     ) -> TripDecisionRecord:
-        saved_trip_id = f"mock-trip-{commute_plan_id.lower().replace(' ', '-')}"
+        saved_trip_id = f"trip-{commute_plan_id.lower().replace(' ', '-')}"
         record = TripDecisionRecord(
             saved_trip_id=saved_trip_id,
             commute_plan_id=commute_plan_id,
@@ -29,7 +29,6 @@ class TripRepository:
             estimated_savings=estimated_savings,
             optimized_route_cost=optimized_route_cost,
         )
-
         if self.database is not None:
             self.database.trips.update_one(
                 {"saved_trip_id": saved_trip_id},
@@ -38,22 +37,21 @@ class TripRepository:
             )
         else:
             _MOCK_TRIPS[saved_trip_id] = record
-
         return record
 
     def get_recent_trips(self, limit: int = 5) -> RecentTrips:
         if self.database is not None:
-            docs = list(self.database.trips.find({}, {"_id": 0}).sort("_id", -1).limit(limit))
+            docs = self.database.trips.find({}, {"_id": 0}).sort("_id", -1).limit(limit)
             return RecentTrips(
                 trips=[TripDecisionRecord(**doc) for doc in docs],
                 data_source=self.data_source,
             )
 
-        trips: List[TripDecisionRecord] = list(_MOCK_TRIPS.values())[-limit:]
+        trips = list(_MOCK_TRIPS.values())[-limit:]
         if not trips:
             trips = [
                 TripDecisionRecord(
-                    saved_trip_id="mock-trip-frisco-to-downtown-dallas",
+                    saved_trip_id="trip-sample-commute-plan",
                     commute_plan_id="sample-commute-plan",
                     user_label="Frisco to Downtown Dallas",
                     route_summary="Mock gantry-aware commute decision",

@@ -47,7 +47,6 @@ class BudgetRepository:
             current_monthly_spend=current.current_monthly_spend,
             data_source=self.data_source,
         )
-
         if self.database is not None:
             self.database.budgets.update_one(
                 {"user_id": user_id},
@@ -56,7 +55,6 @@ class BudgetRepository:
             )
         else:
             _MOCK_BUDGETS[user_id] = updated
-
         return updated
 
     def get_budget_status(
@@ -66,21 +64,21 @@ class BudgetRepository:
     ) -> BudgetStatus:
         profile = self.get_budget_profile(user_id=user_id)
         if budget_period == "weekly":
-            limit = profile.weekly_budget
-            spend = profile.current_weekly_spend
+            budget_limit = profile.weekly_budget
+            estimated_spend = profile.current_weekly_spend
         elif budget_period == "monthly":
-            limit = profile.monthly_budget
-            spend = profile.current_monthly_spend
+            budget_limit = profile.monthly_budget
+            estimated_spend = profile.current_monthly_spend
         else:
             budget_period = "daily"
-            limit = profile.daily_budget
-            spend = profile.current_daily_spend
+            budget_limit = profile.daily_budget
+            estimated_spend = profile.current_daily_spend
 
-        remaining = round(limit - spend, 2)
+        remaining = round(budget_limit - estimated_spend, 2)
         return BudgetStatus(
             budget_period=budget_period,
-            budget_limit=limit,
-            estimated_spend=spend,
+            budget_limit=budget_limit,
+            estimated_spend=estimated_spend,
             remaining_budget=remaining,
             status="budget_available" if remaining >= 0 else "budget_exceeded",
             data_source=self.data_source,

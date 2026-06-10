@@ -13,6 +13,11 @@ class TripDecisionRecord(BaseModel):
     created_by: str = "tollio_api"
 
 
+class RecentTrips(BaseModel):
+    trips: List[TripDecisionRecord]
+    data_source: str
+
+
 class SavingsSummary(BaseModel):
     trip_count: int
     estimated_total_savings: float
@@ -36,9 +41,4 @@ class BudgetStatus(BaseModel):
     estimated_spend: float
     remaining_budget: float
     status: str
-    data_source: str
-
-
-class RecentTrips(BaseModel):
-    trips: List[TripDecisionRecord]
     data_source: str

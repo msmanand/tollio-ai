@@ -6,6 +6,8 @@ This service currently uses deterministic placeholder responses only. It does no
 
 Live Google Routes support is gated. Leave `ENABLE_LIVE_ROUTES=false` for mock mode. To run a live smoke test intentionally, provide `GOOGLE_MAPS_API_KEY`, set `ENABLE_LIVE_ROUTES=true`, start the API, and call the commute plan endpoint. Do not commit real keys.
 
+MongoDB Atlas persistence is gated. Leave `TOLLIO_STORAGE_MODE=mock` for local tests. To run a live smoke test intentionally, set `TOLLIO_STORAGE_MODE=mongodb`, provide `MONGODB_URI`, and call `/api/v1/trips/save` or `/api/v1/budget/status`. Do not commit real MongoDB URIs.
+
 ## Verification
 
 Setup command:
