@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from app.adapters.google_routes_adapter import (
     NormalizedMapMarker,
     NormalizedRouteOption,
@@ -34,6 +37,30 @@ def _route(
             )
         ],
         data_source="test",
+    )
+
+
+def _scenario_route(name):
+    fixture_path = Path(__file__).parent / "fixtures" / "gantry_scenarios.json"
+    scenario = json.loads(fixture_path.read_text())[name]
+    return NormalizedRouteOption(
+        route_id=scenario["route_id"],
+        route_label=scenario["route_label"],
+        total_minutes=sum(segment["estimated_minutes"] for segment in scenario["segments"]),
+        total_distance_miles=sum(segment["distance_miles"] for segment in scenario["segments"]),
+        estimated_toll_cost=scenario["estimated_toll_cost"],
+        polyline=f"placeholder_{scenario['route_id']}",
+        segments=[NormalizedRouteSegment(**segment) for segment in scenario["segments"]],
+        map_markers=[
+            NormalizedMapMarker(
+                marker_type="origin",
+                label="fixture",
+                latitude=0.0,
+                longitude=0.0,
+                description="fixture marker",
+            )
+        ],
+        data_source="fixture",
     )
 
 
@@ -118,13 +145,13 @@ def test_value_score_is_deterministic():
 
 
 def test_saver_mode_can_recommend_exiting_two_or_more_exits_before_gantry():
-    route = _route([_segment(label="Long low-value gantry", cost=8.0, minutes=6, distance=7.0)])
+    route = _scenario_route("saver_multi_exit")
 
     decisions = _decisions(route, UrgencyMode.saver)
 
     assert decisions[0].action == GantryAction.exit_before_gantry
     assert decisions[0].added_minutes > 5
-    assert "multi-exit detour" in decisions[0].reason
+    assert "Exit two or more exits earlier" in decisions[0].reason
 
 
 def test_over_budget_user_gets_more_aggressive_toll_avoidance():
@@ -148,7 +175,7 @@ def test_balanced_mode_avoids_multi_exit_detour_if_savings_are_too_small():
     decisions = _decisions(route, UrgencyMode.balanced, daily_budget=30.0)
 
     assert decisions[0].added_minutes <= 5
-    assert "multi-exit detour" not in decisions[0].reason
+    assert "Exit two or more exits earlier" not in decisions[0].reason
 
 
 def test_urgent_mode_avoids_multi_exit_detour_unless_budget_is_exceeded():
@@ -164,3 +191,58 @@ def test_urgent_mode_avoids_multi_exit_detour_unless_budget_is_exceeded():
 
     assert within_budget.added_minutes <= 2
     assert over_budget.added_minutes > 2
+
+
+def test_balanced_mode_stays_on_toll_when_signal_delay_outweighs_savings():
+    decisions = _decisions(
+        _scenario_route("balanced_signal_delay"),
+        UrgencyMode.balanced,
+        daily_budget=30.0,
+    )
+
+    assert decisions[0].action == GantryAction.stay_on_toll
+    assert "Stay on toll" in decisions[0].reason
+
+
+def test_urgent_mode_stays_on_toll_unless_budget_is_exceeded():
+    route = _scenario_route("urgent_keep_toll")
+
+    within_budget = _decisions(route, UrgencyMode.urgent, daily_budget=30.0)[0]
+    over_budget = _decisions(
+        route,
+        UrgencyMode.urgent,
+        daily_budget=1.0,
+        current_period_spend=1.0,
+    )[0]
+
+    assert within_budget.action == GantryAction.stay_on_toll
+    assert over_budget.action != GantryAction.stay_on_toll
+
+
+def test_under_budget_user_can_pay_high_value_tolls():
+    decisions = _decisions(
+        _scenario_route("urgent_keep_toll"),
+        UrgencyMode.balanced,
+        daily_budget=30.0,
+    )
+
+    assert decisions[0].action == GantryAction.stay_on_toll
+
+
+def test_low_value_reason_is_product_ready():
+    decisions = _decisions(
+        _scenario_route("low_value_skip"),
+        UrgencyMode.saver,
+        daily_budget=8.0,
+    )
+
+    assert "Skip this gantry because it saves only 1 minute but costs $2.10." == decisions[0].reason
+
+
+def test_same_route_input_always_produces_same_output():
+    route = _scenario_route("saver_multi_exit")
+
+    first = [decision.model_dump() for decision in _decisions(route, UrgencyMode.saver)]
+    second = [decision.model_dump() for decision in _decisions(route, UrgencyMode.saver)]
+
+    assert first == second
