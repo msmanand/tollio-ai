@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -14,6 +14,7 @@ class BudgetPeriod(str, Enum):
     daily = "daily"
     weekly = "weekly"
     monthly = "monthly"
+    yearly = "yearly"
 
 
 class GantryAction(str, Enum):
@@ -51,6 +52,12 @@ class CommutePlanRequest(BaseModel):
     vehicle_mpg: float = Field(..., gt=0)
     gas_price: float = Field(..., ge=0)
     avoid_excessive_signals: bool
+    budget_amount: Optional[float] = Field(default=None, ge=0)
+    current_period_spend: float = Field(default=0.0, ge=0)
+    commute_days_per_week: int = Field(default=5, ge=1, le=7)
+    trips_per_commute_day: int = Field(default=2, ge=1, le=10)
+    include_weekends: bool = False
+    remaining_days_in_period: Optional[int] = Field(default=None, ge=0)
 
 
 class GantryDecision(BaseModel):
@@ -82,6 +89,15 @@ class MapMarker(BaseModel):
     description: str
 
 
+class BudgetDashboardSummary(BaseModel):
+    spend_to_date: float
+    budget_remaining: float
+    projected_period_spend: float
+    projected_overage: float
+    savings_to_date: float = 0.0
+    dashboard_message: str
+
+
 class CommutePlanResponse(BaseModel):
     recommended_route_summary: str
     natural_route_cost: float
@@ -98,6 +114,7 @@ class CommutePlanResponse(BaseModel):
     optimized_route_polyline: str
     route_segments: List[RouteSegment]
     map_markers: List[MapMarker]
+    budget_summary: Optional[BudgetDashboardSummary] = None
 
 
 class TripSaveRequest(BaseModel):
@@ -116,3 +133,4 @@ class BudgetStatusResponse(BaseModel):
     estimated_spend: float
     remaining_budget: float
     status: str
+    budget_summary: Optional[BudgetDashboardSummary] = None
