@@ -4,7 +4,7 @@ These commands verify the current `main` branch in safe mock mode. No live API k
 
 Run commands from the repository root unless noted.
 
-## Run API Tests
+## API Tests
 
 ```sh
 cd services/api
@@ -13,7 +13,7 @@ pip install -r requirements.txt
 pytest
 ```
 
-## Run Agent Tests
+## Agent Tests
 
 ```sh
 cd services/agent
@@ -22,13 +22,31 @@ pip install -r requirements.txt
 pytest
 ```
 
+## Demo Build
+
+```sh
+cd apps/demo
+npm install
+npm run build
+```
+
 ## Run API Locally
 
 ```sh
 cd services/api
 source .venv/bin/activate
-uvicorn main:app --reload
+uvicorn main:app --host 127.0.0.1 --port 8000
 ```
+
+## Run Demo Dashboard
+
+```sh
+cd apps/demo
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`.
 
 ## System Status
 
@@ -59,7 +77,18 @@ curl -X POST http://localhost:8000/api/v1/commute/plan \
   }'
 ```
 
-Verify the response includes route segments, map markers, gantry decisions, optimized toll cost, estimated savings, added minutes, and budget impact.
+Verify the response includes:
+
+- `recommended_strategy`
+- `route_value_score`
+- `toll_minutes_used`
+- `service_road_minutes`
+- `avoided_charges`
+- `paid_charges`
+- `route_segments`
+- `map_markers`
+- `gantry_decisions`
+- `budget_summary`
 
 ## Save Trip
 
@@ -78,4 +107,4 @@ curl -X POST http://localhost:8000/api/v1/trips/save \
 curl http://localhost:8000/api/v1/budget/status
 ```
 
-Verify the response includes daily budget limit, estimated spend, remaining budget, and status.
+Verify the response includes daily budget limit, estimated spend, remaining budget, status, and budget summary.

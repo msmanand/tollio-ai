@@ -1,6 +1,6 @@
 # Tollio AI Submission Summary
 
-## Project Name
+## Project
 
 Tollio AI
 
@@ -8,68 +8,63 @@ Tollio AI
 
 Anand Meenakshi Sundaram
 
-## One-Line Description
+## One-Line Pitch
 
-Tollio AI is a budget-aware toll routing agent that helps drivers decide which toll gantries are worth paying.
+Tollio AI is a budget-aware toll routing agent that helps drivers pay only for toll segments that create real route value.
 
 ## Problem
 
-Drivers often face repeated toll scanners without knowing which ones meaningfully improve arrival time and which ones quietly drain the daily, weekly, or monthly toll budget.
+Navigation apps usually treat toll routing as a blunt switch: use tolls or avoid tolls. Real commuters need a more precise answer: which gantry, connector, bridge, or toll segment is actually worth the money today?
+
+## Solution
+
+Tollio compares toll-road time, service-road time, cost, budget pressure, urgency, and segment value. It recommends a route strategy, shows which tolls were paid or avoided, explains why the strategy wins, and displays the impact on the selected toll budget.
+
+## Core Innovation
+
+The Gantry Intelligence Engine and Route Value Optimizer analyze toll decisions at gantry and segment level. Tollio can evaluate full toll, delayed toll entry, early toll exit, service road to destination, connector/bridge avoidance, and max-value-after-paid-gantry strategies.
 
 ## Technical Architecture
 
-- FastAPI backend contracts for commute planning, trip save, budget status, and system status.
-- Google Routes adapter boundary for mock-first and live-gated route data.
-- Deterministic Gantry Intelligence Engine for segment-level toll decisions.
-- Agent skeleton with tool-based orchestration.
-- MongoDB/MCP-ready persistence direction for trip memory, budgets, and savings.
-- Gemini-ready explanation layer that explains deterministic decisions without changing them.
-
-## Agent Workflow
-
-1. Receive commute request with origin, destination, arrival time, urgency, vehicle cost inputs, and toll budgets.
-2. Get route options through the route adapter.
-3. Score gantry and segment decisions with the deterministic engine.
-4. Explain budget and time tradeoffs.
-5. Save trip and inspect budget state.
-
-## Partner MCP Usage
-
-MongoDB/MCP is intended for saved commute memory, budget profiles, and savings history. The project is designed so future MCP tools can attach to repository and agent-memory boundaries without changing the commute contract.
-
-## Google Cloud / Gemini Usage
-
-Google Routes and Gemini are live-gated/readiness-enabled. Google Routes is the future route data provider. Gemini is the future explanation/orchestration layer, constrained to explain provided deterministic decisions only.
+- FastAPI backend for commute planning, trip save, budget status, and system status.
+- Mock-first Google Routes adapter with map-ready route segments and markers.
+- Deterministic route value scoring engine.
+- Gemini-ready explanation layer that explains provided deterministic outputs.
+- MongoDB/MCP-ready persistence and agent tool interfaces.
+- Vite React demo dashboard for local judging.
 
 ## Demo Scenario
 
-"Get me from Frisco to Downtown Dallas by 8:30, but keep me under my $8 daily toll budget."
+Use the preset: Frisco to Downtown Dallas under an $8 daily toll budget.
 
-The demo returns route segments, map markers, optimized toll cost, estimated savings, added minutes, gantry decisions, and budget impact.
+The demo shows:
+
+- Recommended strategy and route value score
+- Paid toll charges and avoided toll charges
+- Toll-road, service-road, and local-road minutes
+- Natural cost, optimized cost, savings, and added minutes
+- Gantry decisions and map markers
+- Budget remaining and driver-friendly explanation
+
+## Google / Gemini / MongoDB Readiness
+
+Mock mode is the default and requires no credentials.
+
+- Google Routes is live-gated by `ENABLE_LIVE_ROUTES=true` plus `GOOGLE_MAPS_API_KEY`.
+- Gemini is live-gated by `TOLLIO_AGENT_MODE=live` plus `GEMINI_API_KEY`; Gemini is constrained to explain, not invent or change route decisions.
+- MongoDB Atlas is live-gated by `TOLLIO_STORAGE_MODE=mongodb` plus `MONGODB_URI`.
+- MCP alignment is represented through agent memory tool interfaces for trips, budgets, recent commutes, and savings.
 
 ## What Is Working Now
 
-- FastAPI commute planning contract.
-- Mock route adapter with map-ready route segments and markers.
-- Deterministic Gantry Intelligence Engine.
-- Trip save and budget status placeholder endpoints.
-- API and agent test suites.
-- End-to-end demo flow coverage when present on the active branch.
+- Backend API and route contracts
+- Deterministic toll route value scoring
+- Mock map-style demo dashboard
+- Mock persistence and readiness checks
+- API, agent, and demo build tests
 
-## Mock-Gated vs Live-Ready
+## Known Limitations
 
-- Mock mode is default for safe judging and local demos.
-- Google Routes is live-gated by `ENABLE_LIVE_ROUTES=true` plus an API key.
-- MongoDB is live-gated by `TOLLIO_STORAGE_MODE=mongodb` plus a MongoDB URI.
-- Gemini is live-gated by `TOLLIO_AGENT_MODE=live` plus a Gemini API key.
-
-No real credentials are committed, and live calls are not required for demo verification.
-
-## Future Roadmap
-
-1. Merge live-readiness and live-provider branches into main.
-2. Enable Google Routes live smoke test.
-3. Enable MongoDB Atlas persistence.
-4. Enable Gemini explanation layer.
-5. Build the React Native Expo mobile demo.
-6. Expand gantry metadata and toll-provider coverage.
+- No live Google Maps rendering yet; the dashboard uses SVG/CSS mock map visualization.
+- Live Google Routes, Gemini, and MongoDB require credentials and explicit mode flags.
+- Toll data is mock scenario data until live provider integration is enabled.
