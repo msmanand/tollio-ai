@@ -388,7 +388,9 @@ def _budget_limit(
         return daily_budget
     if budget_period == BudgetPeriod.weekly:
         return weekly_budget
-    return monthly_budget
+    if budget_period == BudgetPeriod.monthly:
+        return monthly_budget
+    return monthly_budget * 12
 
 
 def _budget_pressure(remaining_budget: float, route_cost: float, budget_limit: float) -> str:

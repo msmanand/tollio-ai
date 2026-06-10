@@ -1,11 +1,13 @@
 from app.adapters.google_routes_adapter import NormalizedRouteOption, get_route_options
 from app.models import (
+    BudgetPeriod,
     CommutePlanRequest,
     CommutePlanResponse,
     GantryDecision,
     MapMarker,
     RouteSegment,
 )
+from app.services.budget_engine import BudgetIntelligenceResult, evaluate_budget
 from app.services.explanation_service import generate_explanation
 from app.services.gantry_engine import score_gantry_decisions
 
@@ -38,6 +40,15 @@ def _frisco_to_downtown_dallas_plan(
     optimized_route = _find_route(route_options, "optimized_gantry_plan")
     optimized_segments = _to_route_segments(optimized_route)
     optimized_markers = _to_map_markers(optimized_route)
+    estimated_savings = round(
+        natural_route.estimated_toll_cost - optimized_route.estimated_toll_cost,
+        2,
+    )
+    budget_result = _evaluate_request_budget(
+        request=request,
+        planned_trip_toll_cost=optimized_route.estimated_toll_cost,
+        savings_to_date=estimated_savings,
+    )
     gantry_decisions = score_gantry_decisions(
         route_option=optimized_route,
         urgency_mode=request.urgency_mode,
@@ -45,6 +56,7 @@ def _frisco_to_downtown_dallas_plan(
         daily_budget=request.daily_budget,
         weekly_budget=request.weekly_budget,
         monthly_budget=request.monthly_budget,
+        current_period_spend=request.current_period_spend,
         avoid_excessive_signals=request.avoid_excessive_signals,
     )
 
@@ -56,12 +68,9 @@ def _frisco_to_downtown_dallas_plan(
         ),
         natural_route_cost=natural_route.estimated_toll_cost,
         optimized_route_cost=optimized_route.estimated_toll_cost,
-        estimated_savings=round(natural_route.estimated_toll_cost - optimized_route.estimated_toll_cost, 2),
+        estimated_savings=estimated_savings,
         added_minutes=max(optimized_route.total_minutes - natural_route.total_minutes, 0),
-        budget_impact=(
-            f"Optimized toll spend is ${optimized_route.estimated_toll_cost:.2f}, leaving ${request.daily_budget - optimized_route.estimated_toll_cost:.2f} "
-            f"of the ${request.daily_budget:.2f} daily budget."
-        ),
+        budget_impact=_budget_impact_text(budget_result),
         gantry_decisions=gantry_decisions,
         explanation=(
             "The deterministic Gantry Intelligence Engine scores each gantry or segment "
@@ -80,6 +89,7 @@ def _frisco_to_downtown_dallas_plan(
         optimized_route_polyline=optimized_route.polyline,
         route_segments=optimized_segments,
         map_markers=optimized_markers,
+        budget_summary=budget_result.dashboard_summary,
     )
     explanation = generate_explanation(response)
     return response.model_copy(update={"explanation": explanation.detailed_explanation})
@@ -93,6 +103,11 @@ def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanRespons
         request.urgency_mode.value,
     )
     route = route_options[0]
+    budget_result = _evaluate_request_budget(
+        request=request,
+        planned_trip_toll_cost=route.estimated_toll_cost,
+        savings_to_date=0.0,
+    )
     gantry_decisions = score_gantry_decisions(
         route_option=route,
         urgency_mode=request.urgency_mode,
@@ -100,6 +115,7 @@ def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanRespons
         daily_budget=request.daily_budget,
         weekly_budget=request.weekly_budget,
         monthly_budget=request.monthly_budget,
+        current_period_spend=request.current_period_spend,
         avoid_excessive_signals=request.avoid_excessive_signals,
     )
 
@@ -112,9 +128,7 @@ def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanRespons
         optimized_route_cost=0.0,
         estimated_savings=0.0,
         added_minutes=0,
-        budget_impact=(
-            f"No toll impact estimated yet for the {request.budget_period.value} budget."
-        ),
+        budget_impact=_budget_impact_text(budget_result),
         gantry_decisions=gantry_decisions,
         explanation=(
             "This deterministic placeholder preserves the response shape for future "
@@ -127,9 +141,51 @@ def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanRespons
         optimized_route_polyline=route.polyline,
         route_segments=_to_route_segments(route),
         map_markers=_to_map_markers(route),
+        budget_summary=budget_result.dashboard_summary,
     )
     explanation = generate_explanation(response)
     return response.model_copy(update={"explanation": explanation.detailed_explanation})
+
+
+def _evaluate_request_budget(
+    request: CommutePlanRequest,
+    planned_trip_toll_cost: float,
+    savings_to_date: float,
+) -> BudgetIntelligenceResult:
+    return evaluate_budget(
+        budget_amount=_selected_budget_amount(request),
+        budget_period=request.budget_period,
+        current_period_spend=request.current_period_spend,
+        commute_days_per_week=request.commute_days_per_week,
+        trips_per_commute_day=request.trips_per_commute_day,
+        include_weekends=request.include_weekends,
+        remaining_days_in_period=request.remaining_days_in_period,
+        planned_trip_toll_cost=planned_trip_toll_cost,
+        urgency_mode=request.urgency_mode,
+        savings_to_date=savings_to_date,
+    )
+
+
+def _selected_budget_amount(request: CommutePlanRequest) -> float:
+    if request.budget_amount is not None:
+        return request.budget_amount
+    if request.budget_period == BudgetPeriod.daily:
+        return request.daily_budget
+    if request.budget_period == BudgetPeriod.weekly:
+        return request.weekly_budget
+    if request.budget_period == BudgetPeriod.monthly:
+        return request.monthly_budget
+    return request.monthly_budget * 12
+
+
+def _budget_impact_text(budget_result: BudgetIntelligenceResult) -> str:
+    return (
+        f"Planned toll spend is ${budget_result.planned_trip_toll_cost:.2f}; "
+        f"${budget_result.after_trip_remaining_budget:.2f} remains after this trip. "
+        f"Recommended per-trip allowance is "
+        f"${budget_result.recommended_per_trip_allowance:.2f}. "
+        f"{budget_result.recommendation}"
+    )
 
 
 def _find_route(
