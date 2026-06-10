@@ -16,6 +16,6 @@ Anand Meenakshi Sundaram leads the product strategy, architecture, and Gantry In
 4. The agent warns where exiting before a gantry may preserve budget.
 5. The mobile app presents a concise decision for the driver.
 
-## Foundation Constraint
+## Current Demo Status
 
-This prompt creates the demo story document only. No demo product features are implemented yet.
+The current `main` branch supports a backend mock demo through the FastAPI commute planning API and the mock-mode agent tests. Live Google Routes, Gemini, MongoDB/MCP, and mobile UI work should be presented as gated or future-facing unless their branches are explicitly merged.

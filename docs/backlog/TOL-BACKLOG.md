@@ -13,3 +13,4 @@
 | TOL-P05-ENGINE-GANTRY | tol/p05-engine-gantry | Not Started | TBD | TBD | TBD | Implement Gantry Intelligence Engine in a later prompt. |
 | TOL-P06-MOBILE-DEMO | tol/p06-mobile-demo | Not Started | TBD | TBD | TBD | Build mobile demo experience in a later prompt. |
 | TOL-P07-HACKATHON-SUBMISSION | tol/p07-hackathon-submission | Not Started | TBD | TBD | TBD | Package hackathon submission materials. |
+| TOL-P13-FINAL-REPO-AUDIT | tol/p13-final-repo-audit | Complete | Final hash reported in verification output | `cd services/api && source .venv/bin/activate && pip install -r requirements.txt && pytest`; `cd ../agent && source .venv/bin/activate && pip install -r requirements.txt && pytest`; `git diff --check`; `git status`; secret-pattern scan | Final audit report | Verified mock-mode hackathon readiness on `main`; added final audit and demo verification docs. |
