@@ -18,6 +18,20 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@router.get("/api/v1/system/status")
+def system_status() -> dict:
+    return {
+        "api_status": "ok",
+        "routes_mode": "mock",
+        "mongodb_mode": "mock",
+        "agent_mode": "mock",
+        "google_routes_ready": False,
+        "mongodb_ready": False,
+        "gemini_ready": False,
+        "warnings": [],
+    }
+
+
 @router.post("/api/v1/commute/plan", response_model=CommutePlanResponse)
 def plan_commute(request: CommutePlanRequest) -> CommutePlanResponse:
     return build_commute_plan(request)

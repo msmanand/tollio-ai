@@ -1,0 +1,14 @@
+{
+  "origin": "Frisco",
+  "destination": "Downtown Dallas",
+  "arrival_time": "08:30",
+  "urgency_mode": "balanced",
+  "daily_budget": 8,
+  "weekly_budget": 40,
+  "monthly_budget": 160,
+  "budget_period": "daily",
+  "toll_pass_type": "NTTA TollTag",
+  "vehicle_mpg": 28,
+  "gas_price": 3.25,
+  "avoid_excessive_signals": true
+}

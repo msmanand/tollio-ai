@@ -1,0 +1,33 @@
+{
+  "required_status_fields": [
+    "api_status",
+    "routes_mode",
+    "mongodb_mode",
+    "agent_mode",
+    "google_routes_ready",
+    "mongodb_ready",
+    "gemini_ready",
+    "warnings"
+  ],
+  "required_commute_fields": [
+    "recommended_route_summary",
+    "natural_route_cost",
+    "optimized_route_cost",
+    "estimated_savings",
+    "added_minutes",
+    "budget_impact",
+    "gantry_decisions",
+    "route_segments",
+    "map_markers"
+  ],
+  "required_concepts": [
+    "budget",
+    "toll avoided",
+    "added minutes",
+    "gantry decision",
+    "map-ready data"
+  ],
+  "max_daily_budget": 8,
+  "expected_origin_marker": "origin",
+  "expected_destination_marker": "destination"
+}

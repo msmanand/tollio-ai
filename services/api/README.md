@@ -47,3 +47,15 @@ curl -X POST http://localhost:8000/api/v1/commute/plan \
     "avoid_excessive_signals": true
   }'
 ```
+
+## Demo Verification Flow
+
+Run the end-to-end demo flow in mock mode:
+
+```sh
+cd services/api
+source .venv/bin/activate
+pytest tests/test_e2e_demo_flow.py
+```
+
+The test verifies system status, commute planning, map-ready route data, gantry decisions, trip save, and budget status for the Frisco to Downtown Dallas demo scenario.
