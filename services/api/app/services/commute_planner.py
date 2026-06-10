@@ -6,6 +6,7 @@ from app.models import (
     MapMarker,
     RouteSegment,
 )
+from app.services.explanation_service import generate_explanation
 from app.services.gantry_engine import score_gantry_decisions
 
 
@@ -47,7 +48,7 @@ def _frisco_to_downtown_dallas_plan(
         avoid_excessive_signals=request.avoid_excessive_signals,
     )
 
-    return CommutePlanResponse(
+    response = CommutePlanResponse(
         recommended_route_summary=(
             "Use the high-value Dallas North Tollway segments from Frisco, "
             "exit before the low-value Legacy-area scanner, then reenter "
@@ -80,6 +81,8 @@ def _frisco_to_downtown_dallas_plan(
         route_segments=optimized_segments,
         map_markers=optimized_markers,
     )
+    explanation = generate_explanation(response)
+    return response.model_copy(update={"explanation": explanation.detailed_explanation})
 
 
 def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanResponse:
@@ -100,7 +103,7 @@ def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanRespons
         avoid_excessive_signals=request.avoid_excessive_signals,
     )
 
-    return CommutePlanResponse(
+    response = CommutePlanResponse(
         recommended_route_summary=(
             "Placeholder contract response. Gantry-level optimization will be "
             "computed after route provider integration."
@@ -125,6 +128,8 @@ def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanRespons
         route_segments=_to_route_segments(route),
         map_markers=_to_map_markers(route),
     )
+    explanation = generate_explanation(response)
+    return response.model_copy(update={"explanation": explanation.detailed_explanation})
 
 
 def _find_route(

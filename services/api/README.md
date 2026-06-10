@@ -31,6 +31,12 @@ Run tests command:
 pytest
 ```
 
+Run explanation-layer verification:
+
+```sh
+pytest tests/test_explanation_service.py
+```
+
 Sample commute plan request:
 
 ```sh
