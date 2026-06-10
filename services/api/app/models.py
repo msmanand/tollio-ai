@@ -104,6 +104,23 @@ class RouteCharge(BaseModel):
     reason: str
 
 
+class ValueScoreBreakdown(BaseModel):
+    road_name: str
+    road_short: str
+    entry_name: str
+    exit_name: str
+    tier_start: str
+    tier_end: str
+    entry_value_score: int
+    exit_value_score: int
+    combined_value_score: int
+    wasted_behind: int
+    unused_ahead: int
+    paid_but_unused_reason: str
+    value_loss_reason: str
+    ntta_data_used: bool = True
+
+
 class CommutePlanResponse(BaseModel):
     recommended_route_summary: str
     natural_route_cost: float
@@ -127,6 +144,14 @@ class CommutePlanResponse(BaseModel):
     service_road_minutes: Optional[int] = None
     avoided_charges: List[RouteCharge] = Field(default_factory=list)
     paid_charges: List[RouteCharge] = Field(default_factory=list)
+    value_score_breakdown: List[ValueScoreBreakdown] = Field(default_factory=list)
+    entry_value_score: Optional[int] = None
+    exit_value_score: Optional[int] = None
+    combined_value_score: Optional[int] = None
+    paid_but_unused_reason: Optional[str] = None
+    value_loss_reason: Optional[str] = None
+    ntta_data_used: bool = False
+    google_routes_data_used: bool = False
 
 
 class TripSaveRequest(BaseModel):

@@ -61,6 +61,23 @@ type RouteCharge = {
   reason: string;
 };
 
+type ValueScoreBreakdown = {
+  road_name: string;
+  road_short: string;
+  entry_name: string;
+  exit_name: string;
+  tier_start: string;
+  tier_end: string;
+  entry_value_score: number;
+  exit_value_score: number;
+  combined_value_score: number;
+  wasted_behind: number;
+  unused_ahead: number;
+  paid_but_unused_reason: string;
+  value_loss_reason: string;
+  ntta_data_used: boolean;
+};
+
 type CommutePlanResponse = {
   recommended_route_summary: string;
   natural_route_cost: number;
@@ -79,6 +96,14 @@ type CommutePlanResponse = {
   service_road_minutes?: number;
   avoided_charges?: RouteCharge[];
   paid_charges?: RouteCharge[];
+  value_score_breakdown?: ValueScoreBreakdown[];
+  entry_value_score?: number;
+  exit_value_score?: number;
+  combined_value_score?: number;
+  paid_but_unused_reason?: string;
+  value_loss_reason?: string;
+  ntta_data_used?: boolean;
+  google_routes_data_used?: boolean;
 };
 
 type SegmentType = "toll" | "service_road" | "local_road";
@@ -478,6 +503,21 @@ function RouteValuePanel({ plan }: { plan: CommutePlanResponse }) {
         </small>
       </div>
 
+      <div className="ntta-score-card">
+        <h4>NTTA Tier Match</h4>
+        <div className="score-triplet">
+          <span>Entry {plan.entry_value_score ?? 0}%</span>
+          <span>Exit {plan.exit_value_score ?? 0}%</span>
+          <span>Combined {plan.combined_value_score ?? 0}%</span>
+        </div>
+        <p>{plan.paid_but_unused_reason ?? "No NTTA toll-tier data matched this route."}</p>
+        <small>{plan.value_loss_reason ?? "No value-loss reason available."}</small>
+        <div className="source-flags">
+          <span>{plan.ntta_data_used ? "NTTA data used" : "NTTA data unmatched"}</span>
+          <span>{plan.google_routes_data_used ? "Google Routes live" : "Google Routes mock"}</span>
+        </div>
+      </div>
+
       <ChargeColumn title="Tolls Paid" charges={paidCharges} emptyText="No toll charges paid." tone="paid" />
       <ChargeColumn
         title="Tolls Avoided"
@@ -485,6 +525,23 @@ function RouteValuePanel({ plan }: { plan: CommutePlanResponse }) {
         emptyText="No toll charges avoided."
         tone="avoided"
       />
+
+      {(plan.value_score_breakdown ?? []).length ? (
+        <div className="value-breakdown-list">
+          {(plan.value_score_breakdown ?? []).map((item) => (
+            <article key={`${item.road_short}-${item.entry_name}-${item.exit_name}`}>
+              <strong>{item.road_name}</strong>
+              <span>
+                {item.entry_name} to {item.exit_name}
+              </span>
+              <small>
+                Tier: {item.tier_start} to {item.tier_end} · wasted behind {item.wasted_behind} ·
+                unused ahead {item.unused_ahead}
+              </small>
+            </article>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -222,7 +222,7 @@ select:focus {
   border-radius: 8px;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1.25fr) 150px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.2fr) 150px minmax(0, 1.05fr) minmax(0, 0.95fr) minmax(0, 0.95fr);
   margin-bottom: 18px;
   padding: 16px;
 }
@@ -260,6 +260,72 @@ select:focus {
 .empty-copy {
   color: #5f6368;
   font-weight: 700;
+}
+
+.ntta-score-card {
+  background: #f8fafb;
+  border: 1px solid #e6e9ed;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.ntta-score-card h4 {
+  color: #5f6368;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.ntta-score-card p,
+.ntta-score-card small {
+  color: #3c4043;
+  font-size: 12px;
+  margin: 0;
+}
+
+.score-triplet,
+.source-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.score-triplet span,
+.source-flags span {
+  background: #ffffff;
+  border: 1px solid #dbe1e7;
+  border-radius: 6px;
+  color: #3c4043;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 6px;
+}
+
+.value-breakdown-list {
+  border-top: 1px solid #edf0f2;
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+  padding-top: 12px;
+}
+
+.value-breakdown-list article {
+  background: #f8fafb;
+  border: 1px solid #e6e9ed;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.value-breakdown-list span,
+.value-breakdown-list small {
+  color: #5f6368;
+  font-size: 12px;
 }
 
 .charge-column {

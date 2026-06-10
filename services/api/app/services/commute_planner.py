@@ -94,6 +94,7 @@ def _frisco_to_downtown_dallas_plan(
             "deterministic_placeholder_contract",
             "founder_defined_sample_scenario",
             optimized_route.data_source,
+            "ntta_static_toll_tier_data" if route_value.ntta_data_used else "ntta_static_toll_tier_data_unmatched",
         ],
         map_route_polyline=optimized_route.polyline,
         natural_route_polyline=natural_route.polyline,
@@ -107,6 +108,14 @@ def _frisco_to_downtown_dallas_plan(
         service_road_minutes=route_value.service_road_minutes,
         avoided_charges=_to_route_charges(route_value.avoided_charges),
         paid_charges=_to_route_charges(route_value.paid_charges),
+        value_score_breakdown=route_value.value_score_breakdown,
+        entry_value_score=route_value.entry_value_score,
+        exit_value_score=route_value.exit_value_score,
+        combined_value_score=route_value.combined_value_score,
+        paid_but_unused_reason=route_value.paid_but_unused_reason,
+        value_loss_reason=route_value.value_loss_reason,
+        ntta_data_used=route_value.ntta_data_used,
+        google_routes_data_used=route_value.google_routes_data_used,
     )
     explanation = generate_explanation(response)
     return response.model_copy(update={"explanation": explanation.detailed_explanation})
@@ -175,6 +184,14 @@ def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanRespons
         service_road_minutes=route_value.service_road_minutes,
         avoided_charges=_to_route_charges(route_value.avoided_charges),
         paid_charges=_to_route_charges(route_value.paid_charges),
+        value_score_breakdown=route_value.value_score_breakdown,
+        entry_value_score=route_value.entry_value_score,
+        exit_value_score=route_value.exit_value_score,
+        combined_value_score=route_value.combined_value_score,
+        paid_but_unused_reason=route_value.paid_but_unused_reason,
+        value_loss_reason=route_value.value_loss_reason,
+        ntta_data_used=route_value.ntta_data_used,
+        google_routes_data_used=route_value.google_routes_data_used,
     )
     explanation = generate_explanation(response)
     return response.model_copy(update={"explanation": explanation.detailed_explanation})

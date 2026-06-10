@@ -39,6 +39,8 @@ Gantry Intelligence Engine: analyzes toll roads at gantry and segment level inst
 
 The repository now includes the mock-mode FastAPI commute planning API, mock-mode agent skeleton, Google Routes adapter boundary, deterministic Gantry Intelligence Engine, and focused API/agent tests. Live Google Routes, Gemini, MongoDB/MCP, and mobile UI work remain gated or future-facing unless explicitly merged in later branches.
 
+Tollio uses Google Routes for route geometry/ETA readiness and NTTA static toll-tier data for DFW gantry value scoring in the local demo.
+
 ## Hackathon Demo
 
 - Demo story: `docs/demo/demo-story.md`
