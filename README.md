@@ -39,6 +39,16 @@ Gantry Intelligence Engine: analyzes toll roads at gantry and segment level inst
 
 This commit establishes only the traceable project foundation. Product features, routing logic, agent behavior, API contracts, MCP integration, Google Routes integration, MongoDB persistence, and mobile demo screens are intentionally deferred to later prompt IDs.
 
+## Hackathon Demo
+
+Demo materials:
+
+- [Hackathon demo script](docs/demo/hackathon-demo-script.md)
+- [Submission summary](docs/demo/submission-summary.md)
+- [Demo verification](docs/demo/demo-verification.md)
+
+Mock mode is the default for safe judging and local demos. Google Routes, MongoDB, and Gemini are live-gated/readiness-enabled, and the deterministic Gantry Intelligence Engine is the core working logic.
+
 ## Verification
 
 To verify the foundation:
