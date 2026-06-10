@@ -1,0 +1,304 @@
+:root {
+  color: #202124;
+  background: #f6f7f9;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.app-shell {
+  margin: 0 auto;
+  max-width: 1240px;
+  padding: 24px;
+}
+
+.topbar {
+  align-items: end;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.eyebrow {
+  color: #5f6368;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  font-size: 32px;
+  line-height: 1.15;
+  margin-bottom: 0;
+}
+
+h2 {
+  font-size: 19px;
+  line-height: 1.35;
+}
+
+h3 {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.workspace {
+  align-items: start;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: 360px minmax(0, 1fr);
+}
+
+.planner-panel {
+  background: #ffffff;
+  border: 1px solid #dde1e6;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgb(60 64 67 / 8%);
+}
+
+.planner-panel {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  position: sticky;
+  top: 16px;
+}
+
+.results-panel {
+  background: transparent;
+  min-height: 520px;
+}
+
+.form-grid {
+  display: grid;
+  gap: 12px;
+}
+
+label {
+  color: #3c4043;
+  display: grid;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 6px;
+}
+
+input,
+select {
+  border: 1px solid #c7ccd1;
+  border-radius: 6px;
+  color: #202124;
+  min-height: 40px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+input:focus,
+select:focus {
+  border-color: #1a73e8;
+  outline: 2px solid rgb(26 115 232 / 18%);
+}
+
+.checkbox-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.checkbox-row input {
+  min-height: auto;
+  width: auto;
+}
+
+.primary-button,
+.preset-button {
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 800;
+  min-height: 40px;
+  padding: 9px 14px;
+}
+
+.primary-button {
+  background: #1a73e8;
+  color: #ffffff;
+}
+
+.primary-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.preset-button {
+  background: #e6f4ea;
+  color: #137333;
+  white-space: nowrap;
+}
+
+.error-text {
+  background: #fce8e6;
+  border-radius: 6px;
+  color: #a50e0e;
+  font-size: 13px;
+  margin: 0;
+  padding: 10px;
+}
+
+.summary {
+  border-bottom: 1px solid #edf0f2;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+}
+
+.metric-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.metric {
+  background: #f8fafb;
+  border: 1px solid #e6e9ed;
+  border-radius: 8px;
+  min-height: 76px;
+  padding: 12px;
+}
+
+.metric span,
+.list-card small {
+  color: #5f6368;
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.metric strong {
+  display: block;
+  font-size: 22px;
+  line-height: 1.2;
+  margin-top: 8px;
+}
+
+.message-strip {
+  background: #fff7db;
+  border: 1px solid #f6d879;
+  border-radius: 8px;
+  color: #4d3b00;
+  font-weight: 700;
+  margin-bottom: 18px;
+  padding: 12px;
+}
+
+.result-section {
+  border-top: 1px solid #edf0f2;
+  padding: 18px 0 0;
+}
+
+.result-section + .result-section {
+  margin-top: 18px;
+}
+
+.result-list {
+  display: grid;
+  gap: 10px;
+}
+
+.list-card {
+  border: 1px solid #e3e7eb;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.list-card div {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.list-card span {
+  background: #eef3fd;
+  border-radius: 999px;
+  color: #185abc;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 8px;
+}
+
+.list-card p,
+.explanation {
+  color: #3c4043;
+  margin: 8px 0;
+}
+
+.empty-state {
+  align-content: center;
+  display: grid;
+  min-height: 420px;
+  text-align: center;
+}
+
+@media (max-width: 920px) {
+  .topbar,
+  .workspace {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .planner-panel {
+    position: static;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .preset-button {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 560px) {
+  .app-shell {
+    padding: 14px;
+  }
+
+  h1 {
+    font-size: 26px;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .list-card div {
+    align-items: start;
+    display: grid;
+  }
+}

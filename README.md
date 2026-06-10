@@ -57,6 +57,26 @@ Demo materials:
 
 Mock mode is the default for safe judging and local demos. Google Routes, MongoDB, and Gemini are live-gated/readiness-enabled, and the deterministic Gantry Intelligence Engine is the core working logic.
 
+## Local Demo Dashboard
+
+Run the API:
+
+```sh
+cd services/api
+source .venv/bin/activate
+uvicorn main:app --reload
+```
+
+Run the browser demo:
+
+```sh
+cd apps/demo
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. The demo calls `http://localhost:8000` by default and stays in mock mode.
+
 ## Verification
 
 To verify the foundation:

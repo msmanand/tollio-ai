@@ -4,6 +4,7 @@
   "private": true,
   "description": "Traceable foundation for Tollio AI.",
   "workspaces": [
+    "apps/demo",
     "apps/mobile",
     "services/api",
     "services/agent",
