@@ -93,3 +93,19 @@ def test_commute_plan_includes_map_markers_from_adapter():
     map_markers = response.json()["map_markers"]
     assert map_markers
     assert any(marker["marker_type"] == "exit" for marker in map_markers)
+
+
+def test_commute_plan_includes_toll_utilization_comparison():
+    response = client.post("/api/v1/commute/plan", json=_sample_request())
+
+    assert response.status_code == 200
+    body = response.json()
+    options = body["toll_utilization_options"]
+    assert options
+    assert body["tier_utilization_percent"] >= 0
+    assert body["distance_paid_for"] >= body["distance_used"]
+    assert any(option["is_best_utilization"] for option in options)
+    assert any(option["is_fastest"] for option in options)
+    assert any(option["is_cheapest"] for option in options)
+    assert any(option["is_best_budget_option"] for option in options)
+    assert all("utilization_percent" in option for option in options)

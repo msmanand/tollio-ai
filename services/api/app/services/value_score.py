@@ -6,6 +6,7 @@ from app.data.ntta_roads import NTTARoad, ROADS, get_price
 
 
 class ValueScoreBreakdown(BaseModel):
+    segment_label: str = ""
     road_name: str
     road_short: str
     entry_name: str
@@ -15,6 +16,10 @@ class ValueScoreBreakdown(BaseModel):
     entry_value_score: int
     exit_value_score: int
     combined_value_score: int
+    tier_utilization_percent: int
+    distance_paid_for: float
+    distance_used: float
+    distance_wasted: float
     wasted_behind: int
     unused_ahead: int
     paid_but_unused_reason: str
@@ -159,6 +164,7 @@ def build_value_score_breakdown(
     entry_index: int,
     exit_index: int,
     payment: str = "zipcash",
+    segment_label: str = "",
 ) -> Optional[ValueScoreBreakdown]:
     road = ROADS.get(road_short)
     if road is None or not _valid_exit(road, entry_index) or not _valid_exit(road, exit_index):
@@ -171,7 +177,10 @@ def build_value_score_breakdown(
     entry_score = entry_value_score(road, entry_index, exit_index, payment)
     exit_score = exit_value_score(road, entry_index, exit_index, payment)
     combined_score = min(entry_score, exit_score)
+    paid_distance = distance_paid_for(road, entry_index, exit_index, payment)
+    used_distance = distance_used(entry_index, exit_index)
     return ValueScoreBreakdown(
+        segment_label=segment_label,
         road_name=road.name,
         road_short=road.short,
         entry_name=road.exits[entry_index],
@@ -181,11 +190,43 @@ def build_value_score_breakdown(
         entry_value_score=entry_score,
         exit_value_score=exit_score,
         combined_value_score=combined_score,
+        tier_utilization_percent=tier_utilization_percent(road, entry_index, exit_index, payment),
+        distance_paid_for=paid_distance,
+        distance_used=used_distance,
+        distance_wasted=round(max(paid_distance - used_distance, 0.0), 2),
         wasted_behind=wasted_behind(road, entry_index, exit_index, payment),
         unused_ahead=unused_ahead(road, entry_index, exit_index, payment),
         paid_but_unused_reason=paid_but_unused_reason(road, entry_index, exit_index, payment),
         value_loss_reason=value_loss_reason(road, entry_index, exit_index, payment),
     )
+
+
+def tier_utilization_percent(
+    road: NTTARoad,
+    entry_index: int,
+    exit_index: int,
+    payment: str = "zipcash",
+) -> int:
+    paid_distance = distance_paid_for(road, entry_index, exit_index, payment)
+    used_distance = distance_used(entry_index, exit_index)
+    if paid_distance <= 0:
+        return 0
+    return round(max(0, min(100, (used_distance / paid_distance) * 100)))
+
+
+def distance_paid_for(
+    road: NTTARoad,
+    entry_index: int,
+    exit_index: int,
+    payment: str = "zipcash",
+) -> float:
+    start_index = tier_start(road, entry_index, exit_index, payment)
+    end_index = tier_end(road, entry_index, exit_index, payment)
+    return round(abs(end_index - start_index) * _EXIT_DISTANCE_MILES, 2)
+
+
+def distance_used(entry_index: int, exit_index: int) -> float:
+    return round(abs(exit_index - entry_index) * _EXIT_DISTANCE_MILES, 2)
 
 
 def average_combined_score(breakdowns: List[ValueScoreBreakdown]) -> int:
@@ -204,3 +245,6 @@ def _valid_exit(road: NTTARoad, index: int) -> bool:
 
 def _score(used_exits: int, paid_exits: int) -> int:
     return round(max(0, min(100, (used_exits / max(paid_exits, 1)) * 100)))
+
+
+_EXIT_DISTANCE_MILES = 0.9

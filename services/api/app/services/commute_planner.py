@@ -7,10 +7,11 @@ from app.models import (
     MapMarker,
     RouteCharge,
     RouteSegment,
+    TollUtilizationOption,
 )
 from app.services.budget_engine import BudgetIntelligenceResult, evaluate_budget
 from app.services.explanation_service import generate_explanation
-from app.services.gantry_engine import RouteChargeSummary, optimize_route_value, score_gantry_decisions
+from app.services.gantry_engine import RouteChargeSummary, RouteValueCandidate, optimize_route_value, score_gantry_decisions
 
 
 def build_commute_plan(request: CommutePlanRequest) -> CommutePlanResponse:
@@ -116,6 +117,15 @@ def _frisco_to_downtown_dallas_plan(
         value_loss_reason=route_value.value_loss_reason,
         ntta_data_used=route_value.ntta_data_used,
         google_routes_data_used=route_value.google_routes_data_used,
+        toll_utilization_options=_to_toll_utilization_options(
+            route_value.candidates,
+            route_value.recommended_strategy,
+            budget_result.after_trip_remaining_budget,
+        ),
+        tier_utilization_percent=route_value.tier_utilization_percent,
+        distance_paid_for=route_value.distance_paid_for,
+        distance_used=route_value.distance_used,
+        distance_wasted=route_value.distance_wasted,
     )
     explanation = generate_explanation(response)
     return response.model_copy(update={"explanation": explanation.detailed_explanation})
@@ -192,6 +202,15 @@ def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanRespons
         value_loss_reason=route_value.value_loss_reason,
         ntta_data_used=route_value.ntta_data_used,
         google_routes_data_used=route_value.google_routes_data_used,
+        toll_utilization_options=_to_toll_utilization_options(
+            route_value.candidates,
+            route_value.recommended_strategy,
+            budget_result.after_trip_remaining_budget,
+        ),
+        tier_utilization_percent=route_value.tier_utilization_percent,
+        distance_paid_for=route_value.distance_paid_for,
+        distance_used=route_value.distance_used,
+        distance_wasted=route_value.distance_wasted,
     )
     explanation = generate_explanation(response)
     return response.model_copy(update={"explanation": explanation.detailed_explanation})
@@ -285,4 +304,57 @@ def _to_route_charges(charges: list[RouteChargeSummary]) -> list[RouteCharge]:
             reason=charge.reason,
         )
         for charge in charges
+    ]
+
+
+def _to_toll_utilization_options(
+    candidates: list[RouteValueCandidate],
+    recommended_strategy: str,
+    after_trip_remaining_budget: float,
+) -> list[TollUtilizationOption]:
+    if not candidates:
+        return []
+    best_utilization = max(
+        candidates,
+        key=lambda candidate: (
+            candidate.tier_utilization_percent,
+            candidate.distance_used,
+            -candidate.total_toll_cost,
+        ),
+    )
+    fastest = min(candidates, key=lambda candidate: candidate.total_minutes)
+    cheapest = min(candidates, key=lambda candidate: candidate.total_toll_cost)
+    budget_viable = [
+        candidate
+        for candidate in candidates
+        if after_trip_remaining_budget >= 0 or candidate.total_toll_cost == 0
+    ]
+    best_budget = min(
+        budget_viable or candidates,
+        key=lambda candidate: (
+            candidate.total_toll_cost,
+            -candidate.tier_utilization_percent,
+        ),
+    )
+
+    return [
+        TollUtilizationOption(
+            strategy=candidate.strategy,
+            total_toll_cost=candidate.total_toll_cost,
+            total_travel_time=candidate.total_minutes,
+            utilization_percent=candidate.tier_utilization_percent,
+            value_score=candidate.final_value_score,
+            tolls_paid=_to_route_charges(candidate.paid_charges),
+            tolls_avoided=_to_route_charges(candidate.avoided_charges),
+            distance_paid_for=candidate.distance_paid_for,
+            distance_used=candidate.distance_used,
+            distance_wasted=candidate.distance_wasted,
+            why_chosen=candidate.recommendation_reason,
+            is_recommended=candidate.strategy == recommended_strategy,
+            is_best_utilization=candidate.strategy == best_utilization.strategy,
+            is_fastest=candidate.strategy == fastest.strategy,
+            is_cheapest=candidate.strategy == cheapest.strategy,
+            is_best_budget_option=candidate.strategy == best_budget.strategy,
+        )
+        for candidate in candidates
     ]

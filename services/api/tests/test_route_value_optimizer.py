@@ -56,22 +56,78 @@ def test_delayed_entry_can_beat_immediate_entry():
     assert result.avoided_charges[0].label == "Low-value Entry Scanner"
 
 
+def test_delayed_entry_can_improve_utilization():
+    result = _optimize("delayed_entry_better", UrgencyMode.balanced, daily_budget=12.0)
+    full_toll = next(candidate for candidate in result.candidates if candidate.strategy == "full_toll_route")
+    delayed = next(candidate for candidate in result.candidates if candidate.strategy == "delayed_toll_entry")
+
+    assert delayed.total_toll_cost < full_toll.total_toll_cost
+    assert delayed.toll_cost_avoided > 0
+
+
+def test_early_exit_can_improve_utilization():
+    result = _optimize("budget_pressure", UrgencyMode.balanced, daily_budget=20.0)
+    full_toll = next(candidate for candidate in result.candidates if candidate.strategy == "full_toll_route")
+    early_exit = next(candidate for candidate in result.candidates if candidate.strategy == "early_toll_exit")
+
+    assert early_exit.total_toll_cost < full_toll.total_toll_cost
+    assert early_exit.toll_cost_avoided > 0
+
+
 def test_service_road_to_destination_can_beat_reentry():
     result = _optimize("service_road_destination", UrgencyMode.saver, daily_budget=6.0)
-    reentry = next(candidate for candidate in result.candidates if candidate.strategy == "max_value_after_paid_gantry")
+    reentry = next(candidate for candidate in result.candidates if candidate.strategy == "maximum_utilization_route")
     service = next(candidate for candidate in result.candidates if candidate.strategy == "service_road_to_destination")
 
     assert service.final_value_score > reentry.final_value_score
     assert service.paid_charges == []
 
 
+def test_service_road_continuation_can_improve_utilization():
+    result = _optimize("service_road_destination", UrgencyMode.saver, daily_budget=6.0)
+    service = next(candidate for candidate in result.candidates if candidate.strategy == "service_road_to_destination")
+
+    assert service.total_toll_cost == 0
+    assert service.toll_cost_avoided > 0
+    assert service.service_road_minutes > 0
+
+
 def test_bridge_or_connector_toll_can_be_avoided_when_low_value():
     result = _optimize("coit_121_to_lewisville", UrgencyMode.balanced, daily_budget=12.0)
 
-    assert result.recommended_strategy == "avoid_connector_or_bridge_toll"
+    assert result.recommended_strategy == "avoid_connector_toll"
     assert any("Bridge Connector" in charge.label for charge in result.avoided_charges)
     assert result.toll_minutes_used > 0
     assert result.service_road_minutes > 0
+
+
+def test_avoiding_connector_toll_can_improve_utilization():
+    result = _optimize("coit_121_to_lewisville", UrgencyMode.balanced, daily_budget=12.0)
+    full_toll = next(candidate for candidate in result.candidates if candidate.strategy == "full_toll_route")
+    avoid_connector = next(
+        candidate for candidate in result.candidates if candidate.strategy == "avoid_connector_toll"
+    )
+
+    assert avoid_connector.total_toll_cost < full_toll.total_toll_cost
+    assert any("Bridge Connector" in charge.label for charge in avoid_connector.avoided_charges)
+
+
+def test_candidate_set_includes_tollio_utilization_strategies():
+    result = _optimize("coit_121_to_lewisville", UrgencyMode.balanced, daily_budget=12.0)
+    strategies = {candidate.strategy for candidate in result.candidates}
+
+    assert {
+        "full_toll_route",
+        "delayed_toll_entry",
+        "early_toll_exit",
+        "delayed_entry_and_early_exit",
+        "service_road_to_destination",
+        "avoid_connector_toll",
+        "avoid_bridge_toll",
+        "maximum_utilization_route",
+        "budget_saver_route",
+        "fastest_route",
+    }.issubset(strategies)
 
 
 def test_full_toll_wins_when_urgent_and_budget_allows():

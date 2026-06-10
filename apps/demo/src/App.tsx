@@ -62,6 +62,7 @@ type RouteCharge = {
 };
 
 type ValueScoreBreakdown = {
+  segment_label: string;
   road_name: string;
   road_short: string;
   entry_name: string;
@@ -71,11 +72,34 @@ type ValueScoreBreakdown = {
   entry_value_score: number;
   exit_value_score: number;
   combined_value_score: number;
+  tier_utilization_percent: number;
+  distance_paid_for: number;
+  distance_used: number;
+  distance_wasted: number;
   wasted_behind: number;
   unused_ahead: number;
   paid_but_unused_reason: string;
   value_loss_reason: string;
   ntta_data_used: boolean;
+};
+
+type TollUtilizationOption = {
+  strategy: string;
+  total_toll_cost: number;
+  total_travel_time: number;
+  utilization_percent: number;
+  value_score: number;
+  tolls_paid: RouteCharge[];
+  tolls_avoided: RouteCharge[];
+  distance_paid_for: number;
+  distance_used: number;
+  distance_wasted: number;
+  why_chosen: string;
+  is_recommended: boolean;
+  is_best_utilization: boolean;
+  is_fastest: boolean;
+  is_cheapest: boolean;
+  is_best_budget_option: boolean;
 };
 
 type CommutePlanResponse = {
@@ -104,6 +128,11 @@ type CommutePlanResponse = {
   value_loss_reason?: string;
   ntta_data_used?: boolean;
   google_routes_data_used?: boolean;
+  toll_utilization_options?: TollUtilizationOption[];
+  tier_utilization_percent?: number;
+  distance_paid_for?: number;
+  distance_used?: number;
+  distance_wasted?: number;
 };
 
 type SegmentType = "toll" | "service_road" | "local_road";
@@ -390,6 +419,8 @@ export function App() {
 
               <div className="message-strip">{plan.budget_summary?.dashboard_message}</div>
 
+              <TollUtilizationComparison plan={plan} />
+
               <RouteValuePanel plan={plan} />
 
               <RouteIntelligenceMap plan={plan} />
@@ -479,6 +510,72 @@ export function App() {
   );
 }
 
+function TollUtilizationComparison({ plan }: { plan: CommutePlanResponse }) {
+  const options = plan.toll_utilization_options ?? [];
+  if (!options.length) {
+    return null;
+  }
+
+  return (
+    <section className="utilization-panel">
+      <div className="utilization-header">
+        <div>
+          <p className="eyebrow">Toll Utilization Comparison</p>
+          <h3>How much paid toll value is actually used?</h3>
+        </div>
+        <div className="utilization-summary">
+          <strong>{plan.tier_utilization_percent ?? 0}%</strong>
+          <span>
+            {(plan.distance_used ?? 0).toFixed(1)} of {(plan.distance_paid_for ?? 0).toFixed(1)} paid mi used
+          </span>
+        </div>
+      </div>
+
+      <div className="utilization-grid">
+        {options.map((option) => (
+          <article
+            className={`utilization-card ${option.is_recommended ? "recommended" : ""}`}
+            key={option.strategy}
+          >
+            <div className="option-title">
+              <strong>{titleCase(option.strategy)}</strong>
+              <div className="option-badges">
+                {option.is_recommended ? <span>Recommended</span> : null}
+                {option.is_best_utilization ? <span>Best Utilization</span> : null}
+                {option.is_fastest ? <span>Fastest</span> : null}
+                {option.is_cheapest ? <span>Cheapest</span> : null}
+                {option.is_best_budget_option ? <span>Best Budget</span> : null}
+              </div>
+            </div>
+            <div className="option-metrics">
+              <span>{currency(option.total_toll_cost)} toll</span>
+              <span>{option.total_travel_time} min</span>
+              <span>{option.utilization_percent}% used</span>
+              <span>{Math.round(option.value_score * 100)} value</span>
+            </div>
+            <p>
+              Uses {option.distance_used.toFixed(1)} of {option.distance_paid_for.toFixed(1)} paid miles;
+              wastes {option.distance_wasted.toFixed(1)} paid miles.
+            </p>
+            <small>{option.why_chosen}</small>
+            <div className="option-charge-lines">
+              <span>Paid: {chargeLabels(option.tolls_paid)}</span>
+              <span>Avoided: {chargeLabels(option.tolls_avoided)}</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function chargeLabels(charges: RouteCharge[]) {
+  if (!charges.length) {
+    return "none";
+  }
+  return charges.map((charge) => `${charge.label} (${currency(charge.amount)})`).join(", ");
+}
+
 function RouteValuePanel({ plan }: { plan: CommutePlanResponse }) {
   const paidCharges = plan.paid_charges ?? [];
   const avoidedCharges = plan.avoided_charges ?? [];
@@ -535,8 +632,8 @@ function RouteValuePanel({ plan }: { plan: CommutePlanResponse }) {
                 {item.entry_name} to {item.exit_name}
               </span>
               <small>
-                Tier: {item.tier_start} to {item.tier_end} · wasted behind {item.wasted_behind} ·
-                unused ahead {item.unused_ahead}
+                Tier: {item.tier_start} to {item.tier_end} · {item.tier_utilization_percent}% used ·
+                wasted behind {item.wasted_behind} · unused ahead {item.unused_ahead}
               </small>
             </article>
           ))}

@@ -49,6 +49,10 @@ class RouteValueCandidate(BaseModel):
     entry_value_score: int = 0
     exit_value_score: int = 0
     combined_value_score: int = 0
+    tier_utilization_percent: int = 0
+    distance_paid_for: float = 0.0
+    distance_used: float = 0.0
+    distance_wasted: float = 0.0
     wasted_behind: int = 0
     unused_ahead: int = 0
     paid_but_unused_reason: str = "No NTTA toll-tier data matched this candidate."
@@ -68,6 +72,10 @@ class RouteValueOptimization(BaseModel):
     entry_value_score: int = 0
     exit_value_score: int = 0
     combined_value_score: int = 0
+    tier_utilization_percent: int = 0
+    distance_paid_for: float = 0.0
+    distance_used: float = 0.0
+    distance_wasted: float = 0.0
     paid_but_unused_reason: str = "No NTTA toll-tier data matched this route."
     value_loss_reason: str = "No NTTA toll-tier data matched this route."
     ntta_data_used: bool = False
@@ -200,7 +208,7 @@ def optimize_route_value(
             ),
         ),
         _route_candidate(
-            strategy="avoid_connector_or_bridge_toll",
+            strategy="avoid_connector_toll",
             route_option=route_option,
             paid_segments=_without_connector_segment(toll_segments),
             avoided_segments=_connector_segments(toll_segments),
@@ -219,22 +227,85 @@ def optimize_route_value(
             ),
         ),
         _route_candidate(
-            strategy="max_value_after_paid_gantry",
+            strategy="avoid_bridge_toll",
             route_option=route_option,
-            paid_segments=_high_value_segments(toll_segments),
-            avoided_segments=_low_value_segments(toll_segments),
+            paid_segments=_without_bridge_segment(toll_segments),
+            avoided_segments=_bridge_segments(toll_segments),
             fastest_minutes=fastest_minutes,
-            added_minutes=5,
-            signal_penalty=3 if avoid_excessive_signals else 1,
+            added_minutes=2,
+            signal_penalty=1 if avoid_excessive_signals else 0,
             remaining_budget=remaining_budget,
             budget_limit=budget_limit,
             urgency_mode=urgency_mode,
-            service_road_minutes=_service_minutes(route_option) + 5,
+            service_road_minutes=_service_minutes(route_option) + 2,
             value_breakdowns=ntta_breakdowns,
             guidance=(
-                "Enter toll at the first high-value segment.",
-                "Exit once the remaining paid segment stops beating service-road value.",
-                "Continue service road/local road after the useful toll time is extracted.",
+                "Use toll only where the paid segment is actually used.",
+                "Exit or bypass before the bridge charge when utilization is low.",
+                "Use the parallel crossing or service road when it avoids a low-utilization bridge toll.",
+            ),
+        ),
+        _route_candidate(
+            strategy="maximum_utilization_route",
+            route_option=route_option,
+            paid_segments=_maximum_utilization_segments(toll_segments, ntta_breakdowns),
+            avoided_segments=_segments_not_in(
+                toll_segments,
+                _maximum_utilization_segments(toll_segments, ntta_breakdowns),
+            ),
+            fastest_minutes=fastest_minutes,
+            added_minutes=4,
+            signal_penalty=2 if avoid_excessive_signals else 0,
+            remaining_budget=remaining_budget,
+            budget_limit=budget_limit,
+            urgency_mode=urgency_mode,
+            service_road_minutes=_service_minutes(route_option) + 4,
+            value_breakdowns=ntta_breakdowns,
+            guidance=(
+                "Enter at the first high-utilization toll tier.",
+                "Exit when the next paid tier would add unused toll distance.",
+                "Use service road for low-utilization paid distance.",
+            ),
+        ),
+        _route_candidate(
+            strategy="budget_saver_route",
+            route_option=route_option,
+            paid_segments=_budget_saver_segments(toll_segments, ntta_breakdowns),
+            avoided_segments=_segments_not_in(
+                toll_segments,
+                _budget_saver_segments(toll_segments, ntta_breakdowns),
+            ),
+            fastest_minutes=fastest_minutes,
+            added_minutes=7,
+            signal_penalty=4 if avoid_excessive_signals else 1,
+            remaining_budget=remaining_budget,
+            budget_limit=budget_limit,
+            urgency_mode=urgency_mode,
+            service_road_minutes=_service_minutes(route_option) + 7,
+            value_breakdowns=ntta_breakdowns,
+            guidance=(
+                "Delay toll entry until utilization is high enough to justify payment.",
+                "Exit before low-utilization charges consume the remaining budget.",
+                "Prefer service road where added time is small relative to toll avoided.",
+            ),
+        ),
+        _route_candidate(
+            strategy="fastest_route",
+            route_option=route_option,
+            paid_segments=toll_segments,
+            avoided_segments=[],
+            fastest_minutes=fastest_minutes,
+            added_minutes=0,
+            signal_penalty=0,
+            remaining_budget=remaining_budget,
+            budget_limit=budget_limit,
+            urgency_mode=urgency_mode,
+            service_road_minutes=0,
+            value_breakdowns=ntta_breakdowns,
+            guidance=(
+                "Enter toll immediately.",
+                "Stay on toll for the lowest travel time.",
+                "Ignore service-road savings unless budget pressure overrides speed.",
             ),
         ),
     ]
@@ -281,6 +352,10 @@ def optimize_route_value(
         entry_value_score=ntta_summary["entry_value_score"],
         exit_value_score=ntta_summary["exit_value_score"],
         combined_value_score=ntta_summary["combined_value_score"],
+        tier_utilization_percent=winner.tier_utilization_percent,
+        distance_paid_for=winner.distance_paid_for,
+        distance_used=winner.distance_used,
+        distance_wasted=winner.distance_wasted,
         paid_but_unused_reason=ntta_summary["paid_but_unused_reason"],
         value_loss_reason=ntta_summary["value_loss_reason"],
         ntta_data_used=bool(ntta_breakdowns),
@@ -664,8 +739,9 @@ def _route_candidate(
     toll_minutes_used = sum(segment.estimated_minutes for segment in paid_segments)
     minutes_saved = max(route_option.total_minutes + 8 - total_minutes, 1)
     cost_per_minute_saved = round(total_toll_cost / minutes_saved, 2) if total_toll_cost else 0.0
-    paid_segment_value_score = _paid_segment_value_score(paid_segments, value_breakdowns)
-    ntta_summary = _ntta_value_summary(value_breakdowns)
+    paid_breakdowns = _breakdowns_for_segments(value_breakdowns, paid_segments)
+    paid_segment_value_score = _paid_segment_value_score(paid_segments, paid_breakdowns)
+    ntta_summary = _ntta_value_summary(paid_breakdowns)
     budget_pressure_score = _budget_pressure_score(
         total_toll_cost=total_toll_cost,
         remaining_budget=remaining_budget,
@@ -738,6 +814,10 @@ def _route_candidate(
         entry_value_score=ntta_summary["entry_value_score"],
         exit_value_score=ntta_summary["exit_value_score"],
         combined_value_score=ntta_summary["combined_value_score"],
+        tier_utilization_percent=ntta_summary["tier_utilization_percent"],
+        distance_paid_for=ntta_summary["distance_paid_for"],
+        distance_used=ntta_summary["distance_used"],
+        distance_wasted=ntta_summary["distance_wasted"],
         wasted_behind=ntta_summary["wasted_behind"],
         unused_ahead=ntta_summary["unused_ahead"],
         paid_but_unused_reason=ntta_summary["paid_but_unused_reason"],
@@ -766,9 +846,9 @@ def _route_final_value_score(
         UrgencyMode.urgent: 0.08,
     }[urgency_mode]
     paid_value_weight = {
-        UrgencyMode.saver: 0.62,
-        UrgencyMode.balanced: 0.9,
-        UrgencyMode.urgent: 1.35,
+        UrgencyMode.saver: 1.45,
+        UrgencyMode.balanced: 1.65,
+        UrgencyMode.urgent: 1.15,
     }[urgency_mode]
     signal_weight = _signal_weight(urgency_mode)
     raw_score = (
@@ -827,6 +907,8 @@ def _route_budget_impact(total_toll_cost: float, remaining_budget: float) -> str
 def _route_value_explanation(candidate: RouteValueCandidate) -> str:
     return (
         f"Recommended strategy: {candidate.strategy}. "
+        f"Toll utilization is {candidate.tier_utilization_percent}%: "
+        f"{candidate.distance_used:.1f} of {candidate.distance_paid_for:.1f} paid miles are used. "
         f"Pay for: {candidate.toll_worth_paying}. "
         f"Avoid: {candidate.toll_not_worth_paying}. "
         f"{candidate.enter_guidance} {candidate.exit_guidance} "
@@ -934,6 +1016,64 @@ def _is_connector_or_bridge(segment: NormalizedRouteSegment) -> bool:
     return any(keyword in label for keyword in ["bridge", "connector", "ramp"])
 
 
+def _bridge_segments(segments: List[NormalizedRouteSegment]) -> List[NormalizedRouteSegment]:
+    return [
+        segment
+        for segment in segments
+        if "bridge" in f"{segment.segment_label} {segment.road_name}".lower()
+    ]
+
+
+def _without_bridge_segment(segments: List[NormalizedRouteSegment]) -> List[NormalizedRouteSegment]:
+    bridge_labels = {segment.segment_label for segment in _bridge_segments(segments)}
+    return [
+        segment
+        for segment in segments
+        if segment.segment_label not in bridge_labels
+    ]
+
+
+def _maximum_utilization_segments(
+    segments: List[NormalizedRouteSegment],
+    breakdowns: List[ValueScoreBreakdown],
+) -> List[NormalizedRouteSegment]:
+    high_utilization_labels = {
+        breakdown.segment_label
+        for breakdown in breakdowns
+        if breakdown.tier_utilization_percent >= 85
+    }
+    selected = [
+        segment
+        for segment in segments
+        if segment.segment_label in high_utilization_labels
+    ]
+    if selected:
+        return selected
+    return _high_value_segments(segments)
+
+
+def _budget_saver_segments(
+    segments: List[NormalizedRouteSegment],
+    breakdowns: List[ValueScoreBreakdown],
+) -> List[NormalizedRouteSegment]:
+    selected = _maximum_utilization_segments(segments, breakdowns)
+    if not selected:
+        return []
+    return [min(selected, key=lambda segment: segment.estimated_cost)]
+
+
+def _segments_not_in(
+    segments: List[NormalizedRouteSegment],
+    selected_segments: List[NormalizedRouteSegment],
+) -> List[NormalizedRouteSegment]:
+    selected_labels = {segment.segment_label for segment in selected_segments}
+    return [
+        segment
+        for segment in segments
+        if segment.segment_label not in selected_labels
+    ]
+
+
 def _paid_charge_reason(segment: NormalizedRouteSegment) -> str:
     value = segment.estimated_minutes / max(segment.estimated_cost, 0.01)
     return (
@@ -984,7 +1124,12 @@ def _ntta_value_breakdowns(route_option: NormalizedRouteOption) -> List[ValueSco
         if match is None:
             continue
         road_short, entry_index, exit_index = match
-        breakdown = build_value_score_breakdown(road_short, entry_index, exit_index)
+        breakdown = build_value_score_breakdown(
+            road_short,
+            entry_index,
+            exit_index,
+            segment_label=segment.segment_label,
+        )
         if breakdown is None:
             continue
         breakdowns.append(ValueScoreBreakdown(**breakdown.model_dump()))
@@ -1012,6 +1157,10 @@ def _ntta_value_summary(breakdowns: List[ValueScoreBreakdown]) -> dict:
             "entry_value_score": 0,
             "exit_value_score": 0,
             "combined_value_score": 0,
+            "tier_utilization_percent": 0,
+            "distance_paid_for": 0.0,
+            "distance_used": 0.0,
+            "distance_wasted": 0.0,
             "wasted_behind": 0,
             "unused_ahead": 0,
             "paid_but_unused_reason": "No NTTA toll-tier data matched this route.",
@@ -1028,8 +1177,32 @@ def _ntta_value_summary(breakdowns: List[ValueScoreBreakdown]) -> dict:
         "combined_value_score": round(
             sum(item.combined_value_score for item in breakdowns) / len(breakdowns)
         ),
+        "tier_utilization_percent": _weighted_utilization(breakdowns),
+        "distance_paid_for": round(sum(item.distance_paid_for for item in breakdowns), 2),
+        "distance_used": round(sum(item.distance_used for item in breakdowns), 2),
+        "distance_wasted": round(sum(item.distance_wasted for item in breakdowns), 2),
         "wasted_behind": sum(item.wasted_behind for item in breakdowns),
         "unused_ahead": sum(item.unused_ahead for item in breakdowns),
         "paid_but_unused_reason": lowest.paid_but_unused_reason,
         "value_loss_reason": lowest.value_loss_reason,
     }
+
+
+def _breakdowns_for_segments(
+    breakdowns: List[ValueScoreBreakdown],
+    segments: List[NormalizedRouteSegment],
+) -> List[ValueScoreBreakdown]:
+    labels = {segment.segment_label for segment in segments}
+    return [
+        breakdown
+        for breakdown in breakdowns
+        if breakdown.segment_label in labels
+    ]
+
+
+def _weighted_utilization(breakdowns: List[ValueScoreBreakdown]) -> int:
+    paid_distance = sum(item.distance_paid_for for item in breakdowns)
+    used_distance = sum(item.distance_used for item in breakdowns)
+    if paid_distance <= 0:
+        return 0
+    return round(max(0, min(100, (used_distance / paid_distance) * 100)))

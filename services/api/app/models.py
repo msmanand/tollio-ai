@@ -105,6 +105,7 @@ class RouteCharge(BaseModel):
 
 
 class ValueScoreBreakdown(BaseModel):
+    segment_label: str = ""
     road_name: str
     road_short: str
     entry_name: str
@@ -114,11 +115,34 @@ class ValueScoreBreakdown(BaseModel):
     entry_value_score: int
     exit_value_score: int
     combined_value_score: int
+    tier_utilization_percent: int
+    distance_paid_for: float
+    distance_used: float
+    distance_wasted: float
     wasted_behind: int
     unused_ahead: int
     paid_but_unused_reason: str
     value_loss_reason: str
     ntta_data_used: bool = True
+
+
+class TollUtilizationOption(BaseModel):
+    strategy: str
+    total_toll_cost: float
+    total_travel_time: int
+    utilization_percent: int
+    value_score: float
+    tolls_paid: List[RouteCharge] = Field(default_factory=list)
+    tolls_avoided: List[RouteCharge] = Field(default_factory=list)
+    distance_paid_for: float
+    distance_used: float
+    distance_wasted: float
+    why_chosen: str
+    is_recommended: bool = False
+    is_best_utilization: bool = False
+    is_fastest: bool = False
+    is_cheapest: bool = False
+    is_best_budget_option: bool = False
 
 
 class CommutePlanResponse(BaseModel):
@@ -152,6 +176,11 @@ class CommutePlanResponse(BaseModel):
     value_loss_reason: Optional[str] = None
     ntta_data_used: bool = False
     google_routes_data_used: bool = False
+    toll_utilization_options: List[TollUtilizationOption] = Field(default_factory=list)
+    tier_utilization_percent: Optional[int] = None
+    distance_paid_for: Optional[float] = None
+    distance_used: Optional[float] = None
+    distance_wasted: Optional[float] = None
 
 
 class TripSaveRequest(BaseModel):
