@@ -37,7 +37,15 @@ Gantry Intelligence Engine: analyzes toll roads at gantry and segment level inst
 
 ## Foundation Status
 
-This commit establishes only the traceable project foundation. Product features, routing logic, agent behavior, API contracts, MCP integration, Google Routes integration, MongoDB persistence, and mobile demo screens are intentionally deferred to later prompt IDs.
+The repository now includes the mock-mode FastAPI commute planning API, mock-mode agent skeleton, Google Routes adapter boundary, deterministic Gantry Intelligence Engine, and focused API/agent tests. Live Google Routes, Gemini, MongoDB/MCP, and mobile UI work remain gated or future-facing unless explicitly merged in later branches.
+
+## Hackathon Demo
+
+- Demo story: `docs/demo/demo-story.md`
+- Demo verification: `docs/demo/demo-verification.md`
+- Final audit report: `docs/demo/final-audit-report.md`
+
+Mock mode is the safe default. The deterministic Gantry Intelligence Engine is the core working logic on `main`.
 
 ## Hackathon Demo
 

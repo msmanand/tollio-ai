@@ -1,5 +1,7 @@
 # Demo Verification
 
+These commands verify the current `main` branch in safe mock mode. No live API keys or paid calls are required.
+
 Run commands from the repository root unless noted.
 
 ## Run API Tests
@@ -36,7 +38,7 @@ curl http://localhost:8000/api/v1/system/status
 
 Expected safe demo posture: mock mode by default, no live credentials required.
 
-## Commute Plan
+## Plan Demo Commute
 
 ```sh
 curl -X POST http://localhost:8000/api/v1/commute/plan \
@@ -57,7 +59,7 @@ curl -X POST http://localhost:8000/api/v1/commute/plan \
   }'
 ```
 
-Verify the response includes route segments, map markers, gantry decisions, estimated savings, added minutes, and budget impact.
+Verify the response includes route segments, map markers, gantry decisions, optimized toll cost, estimated savings, added minutes, and budget impact.
 
 ## Save Trip
 
@@ -70,7 +72,7 @@ curl -X POST http://localhost:8000/api/v1/trips/save \
   }'
 ```
 
-## Budget Status
+## Check Budget Status
 
 ```sh
 curl http://localhost:8000/api/v1/budget/status
