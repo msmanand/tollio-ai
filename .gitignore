@@ -6,6 +6,9 @@ node_modules/
 .env
 .env.*
 !.env.example
+ssh_*
+*.pem
+*.key
 
 # Build outputs
 dist/

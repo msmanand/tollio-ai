@@ -215,6 +215,87 @@ select:focus {
   padding: 12px;
 }
 
+.value-panel {
+  align-items: stretch;
+  background: #ffffff;
+  border: 1px solid #dbe1e7;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1.25fr) 150px minmax(0, 1fr) minmax(0, 1fr);
+  margin-bottom: 18px;
+  padding: 16px;
+}
+
+.value-lead p {
+  color: #3c4043;
+  margin-bottom: 0;
+}
+
+.value-score {
+  background: #f8fafb;
+  border: 1px solid #e6e9ed;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.value-score span,
+.charge-column h4 {
+  color: #5f6368;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.value-score strong {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.value-score small,
+.empty-copy {
+  color: #5f6368;
+  font-weight: 700;
+}
+
+.charge-column {
+  border: 1px solid #e6e9ed;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.charge-column.paid {
+  background: #f3f7ff;
+}
+
+.charge-column.avoided {
+  background: #f1f8f4;
+}
+
+.charge-row {
+  border-top: 1px solid rgb(95 99 104 / 18%);
+  display: grid;
+  gap: 3px;
+  padding-top: 8px;
+}
+
+.charge-row span {
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.charge-row p {
+  color: #3c4043;
+  font-size: 13px;
+  margin-bottom: 0;
+}
+
 .map-panel {
   background: #ffffff;
   border: 1px solid #dbe1e7;
@@ -294,6 +375,15 @@ select:focus {
   stroke: #1a73e8;
 }
 
+.route-line.paid-value {
+  filter: drop-shadow(0 0 5px rgb(26 115 232 / 45%));
+}
+
+.route-line.avoided-value {
+  opacity: 0.42;
+  stroke-dasharray: 14 10;
+}
+
 .route-line.service_road {
   stroke: #34a853;
 }
@@ -343,6 +433,20 @@ select:focus {
   font-weight: 700;
 }
 
+.value-tag {
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.value-tag.paid-value {
+  fill: #185abc;
+}
+
+.value-tag.avoided-value {
+  fill: #137333;
+}
+
 .marker-dot {
   fill: #ffffff;
   stroke: #5f6368;
@@ -390,6 +494,10 @@ select:focus {
 
 .segment-chip span {
   font-weight: 700;
+}
+
+.segment-chip small {
+  font-weight: 800;
 }
 
 .why-panel {
@@ -499,6 +607,7 @@ select:focus {
   }
 
   .map-header,
+  .value-panel,
   .why-panel {
     grid-template-columns: 1fr;
   }

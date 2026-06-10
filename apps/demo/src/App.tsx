@@ -55,6 +55,12 @@ type MapMarker = {
   description: string;
 };
 
+type RouteCharge = {
+  label: string;
+  amount: number;
+  reason: string;
+};
+
 type CommutePlanResponse = {
   recommended_route_summary: string;
   natural_route_cost: number;
@@ -67,6 +73,12 @@ type CommutePlanResponse = {
   map_markers: MapMarker[];
   explanation: string;
   budget_summary?: BudgetSummary;
+  recommended_strategy?: string;
+  route_value_score?: number;
+  toll_minutes_used?: number;
+  service_road_minutes?: number;
+  avoided_charges?: RouteCharge[];
+  paid_charges?: RouteCharge[];
 };
 
 type SegmentType = "toll" | "service_road" | "local_road";
@@ -117,11 +129,15 @@ function segmentCostByType(plan: CommutePlanResponse, type: SegmentType) {
 }
 
 function skippedGantryText(plan: CommutePlanResponse) {
+  const avoidedCharge = plan.avoided_charges?.[0];
   const exitMarker = plan.map_markers.find((marker) => marker.marker_type === "exit");
   const decision = plan.gantry_decisions.find(
     (item) => item.action !== "stay_on_toll" || item.toll_cost_avoided > 0,
   );
 
+  if (avoidedCharge) {
+    return avoidedCharge.label;
+  }
   if (exitMarker) {
     return exitMarker.label;
   }
@@ -327,6 +343,14 @@ export function App() {
                   label="Service-Road Minutes"
                   value={`${routeStats?.serviceRoadMinutes ?? 0}`}
                 />
+                <Metric
+                  label="Value Toll Minutes"
+                  value={`${plan.toll_minutes_used ?? routeStats?.tollMinutes ?? 0}`}
+                />
+                <Metric
+                  label="Route Value"
+                  value={`${Math.round((plan.route_value_score ?? 0) * 100)}%`}
+                />
                 <Metric label="Local-Road Minutes" value={`${routeStats?.localRoadMinutes ?? 0}`} />
                 <Metric label="Natural Cost" value={currency(plan.natural_route_cost)} />
                 <Metric label="Optimized Cost" value={currency(plan.optimized_route_cost)} />
@@ -341,6 +365,8 @@ export function App() {
 
               <div className="message-strip">{plan.budget_summary?.dashboard_message}</div>
 
+              <RouteValuePanel plan={plan} />
+
               <RouteIntelligenceMap plan={plan} />
 
               <section className="why-panel">
@@ -350,10 +376,10 @@ export function App() {
                   <p>
                     The optimized route spends {currency(plan.optimized_route_cost)} instead of{" "}
                     {currency(plan.natural_route_cost)}, saving {currency(plan.estimated_savings)}
-                    while adding {plan.added_minutes} minutes. Toll-road time is{" "}
-                    {routeStats?.tollMinutes ?? 0} minutes, service-road time is{" "}
-                    {routeStats?.serviceRoadMinutes ?? 0} minutes, and local-road time is{" "}
-                    {routeStats?.localRoadMinutes ?? 0} minutes.
+                    while adding {plan.added_minutes} minutes. Strategy{" "}
+                    {titleCase(plan.recommended_strategy ?? "gantry value")} uses{" "}
+                    {plan.toll_minutes_used ?? routeStats?.tollMinutes ?? 0} useful toll minutes and{" "}
+                    {plan.service_road_minutes ?? routeStats?.serviceRoadMinutes ?? 0} service-road minutes.
                   </p>
                 </div>
                 <div className="why-metrics">
@@ -428,6 +454,70 @@ export function App() {
   );
 }
 
+function RouteValuePanel({ plan }: { plan: CommutePlanResponse }) {
+  const paidCharges = plan.paid_charges ?? [];
+  const avoidedCharges = plan.avoided_charges ?? [];
+  const valueScore = Math.round((plan.route_value_score ?? 0) * 100);
+
+  return (
+    <section className="value-panel">
+      <div className="value-lead">
+        <p className="eyebrow">Route Value Intelligence</p>
+        <h3>{titleCase(plan.recommended_strategy ?? "gantry value route")}</h3>
+        <p>
+          This recommendation scores {valueScore}% by comparing time gained, tolls paid,
+          tolls avoided, service-road minutes, and remaining budget.
+        </p>
+      </div>
+
+      <div className="value-score">
+        <span>Value Score</span>
+        <strong>{valueScore}%</strong>
+        <small>
+          {plan.toll_minutes_used ?? 0} toll min · {plan.service_road_minutes ?? 0} service-road min
+        </small>
+      </div>
+
+      <ChargeColumn title="Tolls Paid" charges={paidCharges} emptyText="No toll charges paid." tone="paid" />
+      <ChargeColumn
+        title="Tolls Avoided"
+        charges={avoidedCharges}
+        emptyText="No toll charges avoided."
+        tone="avoided"
+      />
+    </section>
+  );
+}
+
+function ChargeColumn({
+  title,
+  charges,
+  emptyText,
+  tone,
+}: {
+  title: string;
+  charges: RouteCharge[];
+  emptyText: string;
+  tone: "paid" | "avoided";
+}) {
+  return (
+    <div className={`charge-column ${tone}`}>
+      <h4>{title}</h4>
+      {charges.length ? (
+        charges.map((charge) => (
+          <div className="charge-row" key={`${tone}-${charge.label}`}>
+            <strong>{charge.label}</strong>
+            <span>{currency(charge.amount)}</span>
+            <p>{charge.reason}</p>
+          </div>
+        ))
+      ) : (
+        <p className="empty-copy">{emptyText}</p>
+      )}
+    </div>
+  );
+}
+
 function RouteIntelligenceMap({ plan }: { plan: CommutePlanResponse }) {
   const totalMinutes = Math.max(
     plan.route_segments.reduce((total, segment) => total + segment.estimated_minutes, 0),
@@ -436,6 +526,8 @@ function RouteIntelligenceMap({ plan }: { plan: CommutePlanResponse }) {
   let cursor = 70;
   const routeWidth = 780;
   const markerCount = Math.max(plan.map_markers.length - 1, 1);
+  const paidLabels = new Set((plan.paid_charges ?? []).map((charge) => charge.label));
+  const avoidedLabels = new Set((plan.avoided_charges ?? []).map((charge) => charge.label));
 
   return (
     <section className="map-panel" aria-label="Mock route intelligence map">
@@ -462,7 +554,12 @@ function RouteIntelligenceMap({ plan }: { plan: CommutePlanResponse }) {
           const x2 = Math.min(cursor + segmentWidth, 850);
           cursor = x2;
           const y = segment.segment_type === "service_road" ? 190 : segment.segment_type === "local_road" ? 155 : 125;
-          const className = `route-line ${segment.segment_type}`;
+          const valueClass = paidLabels.has(segment.segment_label)
+            ? "paid-value"
+            : avoidedLabels.has(segment.segment_label)
+              ? "avoided-value"
+              : "";
+          const className = `route-line ${segment.segment_type} ${valueClass}`;
 
           return (
             <g key={`${segment.segment_label}-${segment.road_name}`}>
@@ -472,6 +569,11 @@ function RouteIntelligenceMap({ plan }: { plan: CommutePlanResponse }) {
               <text x={(x1 + x2) / 2} y={y - 20} textAnchor="middle" className="segment-label">
                 {segment.segment_label}
               </text>
+              {valueClass ? (
+                <text x={(x1 + x2) / 2} y={y - 42} textAnchor="middle" className={`value-tag ${valueClass}`}>
+                  {valueClass === "paid-value" ? "paid value" : "avoided"}
+                </text>
+              ) : null}
               <text x={(x1 + x2) / 2} y={y + 34} textAnchor="middle" className="segment-meta">
                 {segment.estimated_minutes} min · {currency(segment.estimated_cost)}
               </text>
@@ -515,6 +617,13 @@ function RouteIntelligenceMap({ plan }: { plan: CommutePlanResponse }) {
               {titleCase(segment.segment_type)} · {segment.estimated_minutes} min ·{" "}
               {currency(segment.estimated_cost)}
             </span>
+            <small>
+              {paidLabels.has(segment.segment_label)
+                ? "Route value gained here"
+                : avoidedLabels.has(segment.segment_label)
+                  ? "Charge avoided by strategy"
+                  : "Context segment"}
+            </small>
           </div>
         ))}
       </div>
