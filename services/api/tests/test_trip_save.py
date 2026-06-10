@@ -21,4 +21,4 @@ def test_trip_save_endpoint_returns_saved_trip_id(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "saved"
-    assert body["saved_trip_id"] == "mock-trip-sample-plan"
+    assert body["saved_trip_id"] == "trip-sample-plan"

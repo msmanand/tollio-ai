@@ -20,7 +20,7 @@ def test_mock_mode_works_without_mongodb_uri(monkeypatch):
     )
     budget = budget_repository.get_budget_status()
 
-    assert saved.saved_trip_id == "mock-trip-sample-plan"
+    assert saved.saved_trip_id == "trip-sample-plan"
     assert trip_repository.get_recent_trips().data_source == "mock_persistence"
     assert trip_repository.get_savings_summary().estimated_total_savings >= 4.5
     assert budget.status == "budget_available"

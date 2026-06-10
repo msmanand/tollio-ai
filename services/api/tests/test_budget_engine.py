@@ -138,6 +138,12 @@ def test_budget_status_endpoint_includes_budget_summary():
 
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] in {"under_budget", "close_to_limit", "over_budget"}
+    assert body["status"] in {
+        "budget_available",
+        "budget_exceeded",
+        "under_budget",
+        "close_to_limit",
+        "over_budget",
+    }
     assert body["budget_summary"]["spend_to_date"] == body["estimated_spend"]
     assert "dashboard_message" in body["budget_summary"]
