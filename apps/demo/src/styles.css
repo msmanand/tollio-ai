@@ -178,7 +178,7 @@ select:focus {
 .metric-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 14px;
 }
 
@@ -213,6 +213,225 @@ select:focus {
   font-weight: 700;
   margin-bottom: 18px;
   padding: 12px;
+}
+
+.map-panel {
+  background: #ffffff;
+  border: 1px solid #dbe1e7;
+  border-radius: 8px;
+  margin-bottom: 18px;
+  padding: 16px;
+}
+
+.map-header {
+  align-items: start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: end;
+}
+
+.legend-item,
+.segment-chip {
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 5px 9px;
+}
+
+.legend-item.toll,
+.segment-chip.toll {
+  background: #e8f0fe;
+  color: #185abc;
+}
+
+.legend-item.service_road,
+.segment-chip.service_road {
+  background: #e6f4ea;
+  color: #137333;
+}
+
+.legend-item.local_road,
+.segment-chip.local_road {
+  background: #fef7e0;
+  color: #b06000;
+}
+
+.route-svg {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.map-base {
+  fill: #f7fbf8;
+  stroke: #d7e3dc;
+  stroke-width: 1.5;
+}
+
+.surface-road {
+  fill: none;
+  stroke: #d9dee5;
+  stroke-dasharray: 10 12;
+  stroke-linecap: round;
+  stroke-width: 8;
+}
+
+.route-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 18;
+}
+
+.route-line.toll {
+  stroke: #1a73e8;
+}
+
+.route-line.service_road {
+  stroke: #34a853;
+}
+
+.route-line.local_road {
+  stroke: #fbbc04;
+}
+
+.connector-line,
+.marker-stem {
+  stroke: #6b7280;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.connector-line {
+  stroke-dasharray: 4 5;
+}
+
+.node {
+  fill: #ffffff;
+  stroke-width: 3;
+}
+
+.node.toll {
+  stroke: #185abc;
+}
+
+.node.service_road {
+  stroke: #137333;
+}
+
+.node.local_road {
+  stroke: #b06000;
+}
+
+.segment-label,
+.marker-label {
+  fill: #202124;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.segment-meta {
+  fill: #3c4043;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.marker-dot {
+  fill: #ffffff;
+  stroke: #5f6368;
+  stroke-width: 3;
+}
+
+.marker-dot.origin {
+  stroke: #137333;
+}
+
+.marker-dot.destination {
+  stroke: #a142f4;
+}
+
+.marker-dot.gantry {
+  stroke: #1a73e8;
+}
+
+.marker-dot.exit,
+.marker-dot.reentry {
+  stroke: #f29900;
+}
+
+.marker-dot.warning {
+  stroke: #d93025;
+}
+
+.marker-letter {
+  fill: #202124;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.segment-strip {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.segment-chip {
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.segment-chip span {
+  font-weight: 700;
+}
+
+.why-panel {
+  align-items: start;
+  background: #ffffff;
+  border: 1px solid #dbe1e7;
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  margin-bottom: 18px;
+  padding: 16px;
+}
+
+.why-panel p {
+  color: #3c4043;
+  margin-bottom: 0;
+}
+
+.why-metrics {
+  background: #f8fafb;
+  border: 1px solid #e6e9ed;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.why-metrics span {
+  color: #137333;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.why-metrics strong {
+  font-size: 24px;
+}
+
+.why-metrics small {
+  color: #5f6368;
+  font-weight: 700;
 }
 
 .result-section {
@@ -277,6 +496,23 @@ select:focus {
 
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .map-header,
+  .why-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .map-header {
+    display: grid;
+  }
+
+  .legend {
+    justify-content: start;
+  }
+
+  .segment-strip {
+    grid-template-columns: 1fr;
   }
 
   .preset-button {
