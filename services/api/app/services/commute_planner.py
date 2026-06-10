@@ -5,11 +5,12 @@ from app.models import (
     CommutePlanResponse,
     GantryDecision,
     MapMarker,
+    RouteCharge,
     RouteSegment,
 )
 from app.services.budget_engine import BudgetIntelligenceResult, evaluate_budget
 from app.services.explanation_service import generate_explanation
-from app.services.gantry_engine import score_gantry_decisions
+from app.services.gantry_engine import RouteChargeSummary, optimize_route_value, score_gantry_decisions
 
 
 def build_commute_plan(request: CommutePlanRequest) -> CommutePlanResponse:
@@ -59,6 +60,16 @@ def _frisco_to_downtown_dallas_plan(
         current_period_spend=request.current_period_spend,
         avoid_excessive_signals=request.avoid_excessive_signals,
     )
+    route_value = optimize_route_value(
+        route_option=optimized_route,
+        urgency_mode=request.urgency_mode,
+        budget_period=request.budget_period,
+        daily_budget=request.daily_budget,
+        weekly_budget=request.weekly_budget,
+        monthly_budget=request.monthly_budget,
+        current_period_spend=request.current_period_spend,
+        avoid_excessive_signals=request.avoid_excessive_signals,
+    )
 
     response = CommutePlanResponse(
         recommended_route_summary=(
@@ -90,6 +101,12 @@ def _frisco_to_downtown_dallas_plan(
         route_segments=optimized_segments,
         map_markers=optimized_markers,
         budget_summary=budget_result.dashboard_summary,
+        recommended_strategy=route_value.recommended_strategy,
+        route_value_score=route_value.route_value_score,
+        toll_minutes_used=route_value.toll_minutes_used,
+        service_road_minutes=route_value.service_road_minutes,
+        avoided_charges=_to_route_charges(route_value.avoided_charges),
+        paid_charges=_to_route_charges(route_value.paid_charges),
     )
     explanation = generate_explanation(response)
     return response.model_copy(update={"explanation": explanation.detailed_explanation})
@@ -109,6 +126,16 @@ def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanRespons
         savings_to_date=0.0,
     )
     gantry_decisions = score_gantry_decisions(
+        route_option=route,
+        urgency_mode=request.urgency_mode,
+        budget_period=request.budget_period,
+        daily_budget=request.daily_budget,
+        weekly_budget=request.weekly_budget,
+        monthly_budget=request.monthly_budget,
+        current_period_spend=request.current_period_spend,
+        avoid_excessive_signals=request.avoid_excessive_signals,
+    )
+    route_value = optimize_route_value(
         route_option=route,
         urgency_mode=request.urgency_mode,
         budget_period=request.budget_period,
@@ -142,6 +169,12 @@ def _generic_placeholder_plan(request: CommutePlanRequest) -> CommutePlanRespons
         route_segments=_to_route_segments(route),
         map_markers=_to_map_markers(route),
         budget_summary=budget_result.dashboard_summary,
+        recommended_strategy=route_value.recommended_strategy,
+        route_value_score=route_value.route_value_score,
+        toll_minutes_used=route_value.toll_minutes_used,
+        service_road_minutes=route_value.service_road_minutes,
+        avoided_charges=_to_route_charges(route_value.avoided_charges),
+        paid_charges=_to_route_charges(route_value.paid_charges),
     )
     explanation = generate_explanation(response)
     return response.model_copy(update={"explanation": explanation.detailed_explanation})
@@ -224,4 +257,15 @@ def _to_map_markers(route: NormalizedRouteOption) -> list[MapMarker]:
             description=marker.description,
         )
         for marker in route.map_markers
+    ]
+
+
+def _to_route_charges(charges: list[RouteChargeSummary]) -> list[RouteCharge]:
+    return [
+        RouteCharge(
+            label=charge.label,
+            amount=charge.amount,
+            reason=charge.reason,
+        )
+        for charge in charges
     ]
