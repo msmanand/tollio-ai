@@ -3,6 +3,7 @@ from typing import List
 
 from app.adapters.google_routes_adapter import NormalizedRouteOption, NormalizedRouteSegment
 from app.models import BudgetPeriod, GantryAction, GantryDecision, UrgencyMode
+from pydantic import BaseModel
 
 
 @dataclass(frozen=True)
@@ -16,11 +17,241 @@ class GantryCandidate:
     cost_per_minute_saved: float
 
 
+class RouteChargeSummary(BaseModel):
+    label: str
+    amount: float
+    reason: str
+
+
+class RouteValueCandidate(BaseModel):
+    strategy: str
+    total_toll_cost: float
+    toll_cost_avoided: float
+    total_minutes: int
+    added_minutes_vs_fastest: int
+    estimated_signal_penalty: int
+    toll_minutes_used: int
+    service_road_minutes: int
+    paid_segment_value_score: float
+    cost_per_minute_saved: float
+    budget_pressure_score: float
+    final_value_score: float
+    avoided_charges: List[RouteChargeSummary]
+    paid_charges: List[RouteChargeSummary]
+    recommendation_reason: str
+    enter_guidance: str
+    exit_guidance: str
+    service_road_guidance: str
+    toll_worth_paying: str
+    toll_not_worth_paying: str
+    budget_impact: str
+
+
+class RouteValueOptimization(BaseModel):
+    recommended_strategy: str
+    route_value_score: float
+    toll_minutes_used: int
+    service_road_minutes: int
+    avoided_charges: List[RouteChargeSummary]
+    paid_charges: List[RouteChargeSummary]
+    explanation: str
+    candidates: List[RouteValueCandidate]
+
+
 MODE_THRESHOLDS = {
     UrgencyMode.saver: 10,
     UrgencyMode.balanced: 5,
     UrgencyMode.urgent: 2,
 }
+
+
+def optimize_route_value(
+    route_option: NormalizedRouteOption,
+    urgency_mode: UrgencyMode,
+    budget_period: BudgetPeriod,
+    daily_budget: float,
+    weekly_budget: float,
+    monthly_budget: float,
+    current_period_spend: float = 0.0,
+    avoid_excessive_signals: bool = True,
+) -> RouteValueOptimization:
+    budget_limit = _budget_limit(
+        budget_period,
+        daily_budget=daily_budget,
+        weekly_budget=weekly_budget,
+        monthly_budget=monthly_budget,
+    )
+    remaining_budget = budget_limit - current_period_spend
+    fastest_minutes = _fastest_route_minutes(route_option)
+    toll_segments = _toll_segments(route_option)
+    all_toll_cost = round(sum(segment.estimated_cost for segment in toll_segments), 2)
+    candidates = [
+        _route_candidate(
+            strategy="full_toll_route",
+            route_option=route_option,
+            paid_segments=toll_segments,
+            avoided_segments=[],
+            fastest_minutes=fastest_minutes,
+            added_minutes=0,
+            signal_penalty=0,
+            remaining_budget=remaining_budget,
+            budget_limit=budget_limit,
+            urgency_mode=urgency_mode,
+            service_road_minutes=0,
+            guidance=(
+                "Enter the toll road at the first practical ramp.",
+                "Stay on toll until the destination approach.",
+                "Do not continue service road unless traffic changes.",
+            ),
+        ),
+        _route_candidate(
+            strategy="delayed_toll_entry",
+            route_option=route_option,
+            paid_segments=toll_segments[1:],
+            avoided_segments=toll_segments[:1],
+            fastest_minutes=fastest_minutes,
+            added_minutes=3,
+            signal_penalty=2 if avoid_excessive_signals else 0,
+            remaining_budget=remaining_budget,
+            budget_limit=budget_limit,
+            urgency_mode=urgency_mode,
+            service_road_minutes=_service_minutes(route_option) + 3,
+            guidance=(
+                "Delay toll entry by one or more exits when the first gantry is low value.",
+                "Exit only if the remaining paid segment stops producing value.",
+                "Use service road for the opening stretch, then enter when time savings improve.",
+            ),
+        ),
+        _route_candidate(
+            strategy="early_toll_exit",
+            route_option=route_option,
+            paid_segments=toll_segments[:-1],
+            avoided_segments=toll_segments[-1:],
+            fastest_minutes=fastest_minutes,
+            added_minutes=4,
+            signal_penalty=2 if avoid_excessive_signals else 0,
+            remaining_budget=remaining_budget,
+            budget_limit=budget_limit,
+            urgency_mode=urgency_mode,
+            service_road_minutes=_service_minutes(route_option) + 4,
+            guidance=(
+                "Enter toll normally for the high-value middle segment.",
+                "Exit before the last low-value charge.",
+                "Continue on service road or local road to destination if the time impact stays reasonable.",
+            ),
+        ),
+        _route_candidate(
+            strategy="delayed_entry_and_early_exit",
+            route_option=route_option,
+            paid_segments=toll_segments[1:-1],
+            avoided_segments=_unique_segments(toll_segments[:1] + toll_segments[-1:]),
+            fastest_minutes=fastest_minutes,
+            added_minutes=6,
+            signal_penalty=4 if avoid_excessive_signals else 1,
+            remaining_budget=remaining_budget,
+            budget_limit=budget_limit,
+            urgency_mode=urgency_mode,
+            service_road_minutes=_service_minutes(route_option) + 6,
+            guidance=(
+                "Delay entry until the paid segment becomes useful.",
+                "Exit before the final low-value gantry.",
+                "Use service road at both ends and pay only for the route core.",
+            ),
+        ),
+        _route_candidate(
+            strategy="service_road_to_destination",
+            route_option=route_option,
+            paid_segments=[],
+            avoided_segments=toll_segments,
+            fastest_minutes=fastest_minutes,
+            added_minutes=min(14, 5 + len(toll_segments) * 2),
+            signal_penalty=6 if avoid_excessive_signals else 2,
+            remaining_budget=remaining_budget,
+            budget_limit=budget_limit,
+            urgency_mode=urgency_mode,
+            service_road_minutes=_service_minutes(route_option) + fastest_minutes + 5,
+            guidance=(
+                "Do not enter toll unless urgency changes.",
+                "No toll exit needed because the route stays off paid scanners.",
+                "Stay on service road or local road to destination.",
+            ),
+        ),
+        _route_candidate(
+            strategy="avoid_connector_or_bridge_toll",
+            route_option=route_option,
+            paid_segments=_without_connector_segment(toll_segments),
+            avoided_segments=_connector_segments(toll_segments),
+            fastest_minutes=fastest_minutes,
+            added_minutes=2,
+            signal_penalty=1 if avoid_excessive_signals else 0,
+            remaining_budget=remaining_budget,
+            budget_limit=budget_limit,
+            urgency_mode=urgency_mode,
+            service_road_minutes=_service_minutes(route_option) + 2,
+            guidance=(
+                "Enter toll for useful mainline time savings.",
+                "Exit or bypass before the bridge, ramp, or connector charge.",
+                "Use the parallel service/local connector when the paid connector is low value.",
+            ),
+        ),
+        _route_candidate(
+            strategy="max_value_after_paid_gantry",
+            route_option=route_option,
+            paid_segments=_high_value_segments(toll_segments),
+            avoided_segments=_low_value_segments(toll_segments),
+            fastest_minutes=fastest_minutes,
+            added_minutes=5,
+            signal_penalty=3 if avoid_excessive_signals else 1,
+            remaining_budget=remaining_budget,
+            budget_limit=budget_limit,
+            urgency_mode=urgency_mode,
+            service_road_minutes=_service_minutes(route_option) + 5,
+            guidance=(
+                "Enter toll at the first high-value segment.",
+                "Exit once the remaining paid segment stops beating service-road value.",
+                "Continue service road/local road after the useful toll time is extracted.",
+            ),
+        ),
+    ]
+    if all_toll_cost == 0:
+        candidates = [
+            _route_candidate(
+                strategy="service_road_to_destination",
+                route_option=route_option,
+                paid_segments=[],
+                avoided_segments=[],
+                fastest_minutes=max(route_option.total_minutes, 1),
+                added_minutes=0,
+                signal_penalty=0,
+                remaining_budget=remaining_budget,
+                budget_limit=budget_limit,
+                urgency_mode=urgency_mode,
+                service_road_minutes=_service_minutes(route_option),
+                guidance=(
+                    "No toll entry is needed.",
+                    "No toll exit is needed.",
+                    "Continue on the available local/service route.",
+                ),
+            )
+        ]
+    winner = max(
+        candidates,
+        key=lambda candidate: (
+            candidate.final_value_score,
+            -candidate.total_toll_cost,
+            candidate.toll_cost_avoided,
+        ),
+    )
+    return RouteValueOptimization(
+        recommended_strategy=winner.strategy,
+        route_value_score=winner.final_value_score,
+        toll_minutes_used=winner.toll_minutes_used,
+        service_road_minutes=winner.service_road_minutes,
+        avoided_charges=winner.avoided_charges,
+        paid_charges=winner.paid_charges,
+        explanation=_route_value_explanation(winner),
+        candidates=candidates,
+    )
 
 
 def score_gantry_decisions(
@@ -376,6 +607,303 @@ def _service_road_decision(
             else "Service-road alternative adds too much time, so staying on toll is preferred."
         ),
     )
+
+
+def _route_candidate(
+    strategy: str,
+    route_option: NormalizedRouteOption,
+    paid_segments: List[NormalizedRouteSegment],
+    avoided_segments: List[NormalizedRouteSegment],
+    fastest_minutes: int,
+    added_minutes: int,
+    signal_penalty: int,
+    remaining_budget: float,
+    budget_limit: float,
+    urgency_mode: UrgencyMode,
+    service_road_minutes: int,
+    guidance: tuple[str, str, str],
+) -> RouteValueCandidate:
+    total_toll_cost = round(sum(segment.estimated_cost for segment in paid_segments), 2)
+    toll_cost_avoided = round(sum(segment.estimated_cost for segment in avoided_segments), 2)
+    total_minutes = fastest_minutes + added_minutes
+    toll_minutes_used = sum(segment.estimated_minutes for segment in paid_segments)
+    minutes_saved = max(route_option.total_minutes + 8 - total_minutes, 1)
+    cost_per_minute_saved = round(total_toll_cost / minutes_saved, 2) if total_toll_cost else 0.0
+    paid_segment_value_score = _paid_segment_value_score(paid_segments)
+    budget_pressure_score = _budget_pressure_score(
+        total_toll_cost=total_toll_cost,
+        remaining_budget=remaining_budget,
+        budget_limit=budget_limit,
+    )
+    final_value_score = _route_final_value_score(
+        total_toll_cost=total_toll_cost,
+        toll_cost_avoided=toll_cost_avoided,
+        added_minutes=added_minutes,
+        signal_penalty=signal_penalty,
+        paid_segment_value_score=paid_segment_value_score,
+        cost_per_minute_saved=cost_per_minute_saved,
+        budget_pressure_score=budget_pressure_score,
+        urgency_mode=urgency_mode,
+    )
+    avoided_charges = [
+        RouteChargeSummary(
+            label=segment.segment_label,
+            amount=round(segment.estimated_cost, 2),
+            reason=_avoided_charge_reason(segment, strategy),
+        )
+        for segment in avoided_segments
+    ]
+    paid_charges = [
+        RouteChargeSummary(
+            label=segment.segment_label,
+            amount=round(segment.estimated_cost, 2),
+            reason=_paid_charge_reason(segment),
+        )
+        for segment in paid_segments
+    ]
+    toll_worth_paying = (
+        ", ".join(charge.label for charge in paid_charges)
+        if paid_charges
+        else "No paid toll segment is worth using for this budget and urgency."
+    )
+    toll_not_worth_paying = (
+        ", ".join(charge.label for charge in avoided_charges)
+        if avoided_charges
+        else "No toll charge is avoided in this strategy."
+    )
+    budget_impact = _route_budget_impact(total_toll_cost, remaining_budget)
+
+    return RouteValueCandidate(
+        strategy=strategy,
+        total_toll_cost=total_toll_cost,
+        toll_cost_avoided=toll_cost_avoided,
+        total_minutes=total_minutes,
+        added_minutes_vs_fastest=added_minutes,
+        estimated_signal_penalty=signal_penalty,
+        toll_minutes_used=toll_minutes_used,
+        service_road_minutes=service_road_minutes,
+        paid_segment_value_score=paid_segment_value_score,
+        cost_per_minute_saved=cost_per_minute_saved,
+        budget_pressure_score=budget_pressure_score,
+        final_value_score=final_value_score,
+        avoided_charges=avoided_charges,
+        paid_charges=paid_charges,
+        recommendation_reason=(
+            f"{strategy} scores {final_value_score:.2f} by balancing "
+            f"{total_minutes} minutes, ${total_toll_cost:.2f} toll spend, "
+            f"${toll_cost_avoided:.2f} avoided, and budget pressure."
+        ),
+        enter_guidance=guidance[0],
+        exit_guidance=guidance[1],
+        service_road_guidance=guidance[2],
+        toll_worth_paying=toll_worth_paying,
+        toll_not_worth_paying=toll_not_worth_paying,
+        budget_impact=budget_impact,
+    )
+
+
+def _route_final_value_score(
+    total_toll_cost: float,
+    toll_cost_avoided: float,
+    added_minutes: int,
+    signal_penalty: int,
+    paid_segment_value_score: float,
+    cost_per_minute_saved: float,
+    budget_pressure_score: float,
+    urgency_mode: UrgencyMode,
+) -> float:
+    time_weight = {
+        UrgencyMode.saver: 0.22,
+        UrgencyMode.balanced: 0.38,
+        UrgencyMode.urgent: 0.85,
+    }[urgency_mode]
+    savings_weight = {
+        UrgencyMode.saver: 0.34,
+        UrgencyMode.balanced: 0.45,
+        UrgencyMode.urgent: 0.08,
+    }[urgency_mode]
+    paid_value_weight = {
+        UrgencyMode.saver: 0.62,
+        UrgencyMode.balanced: 0.9,
+        UrgencyMode.urgent: 1.35,
+    }[urgency_mode]
+    signal_weight = _signal_weight(urgency_mode)
+    raw_score = (
+        paid_segment_value_score * paid_value_weight
+        + toll_cost_avoided * savings_weight
+        - added_minutes * time_weight
+        - signal_penalty * signal_weight
+        - budget_pressure_score * 2.2
+        - max(cost_per_minute_saved - 1.5, 0) * 0.45
+        - total_toll_cost * 0.03
+    )
+    normalized = (raw_score + 8.0) / 16.0
+    return round(max(0.0, min(normalized, 1.0)), 2)
+
+
+def _paid_segment_value_score(segments: List[NormalizedRouteSegment]) -> float:
+    if not segments:
+        return 0.0
+    values = [
+        min(segment.estimated_minutes / max(segment.estimated_cost, 0.01), 10.0) / 10.0
+        for segment in segments
+    ]
+    return round(sum(values) / len(values), 2)
+
+
+def _budget_pressure_score(
+    total_toll_cost: float,
+    remaining_budget: float,
+    budget_limit: float,
+) -> float:
+    if total_toll_cost <= 0:
+        if remaining_budget <= 0:
+            return -0.6
+        return 0.0
+    if remaining_budget <= 0:
+        return min(1.0, 0.55 + total_toll_cost / max(budget_limit, 1.0))
+    if total_toll_cost > remaining_budget:
+        return 0.85
+    if remaining_budget - total_toll_cost <= max(2.0, budget_limit * 0.15):
+        return 0.45
+    return 0.0
+
+
+def _route_budget_impact(total_toll_cost: float, remaining_budget: float) -> str:
+    projected_remaining = round(remaining_budget - total_toll_cost, 2)
+    if projected_remaining < 0:
+        return f"This route is ${abs(projected_remaining):.2f} over the selected toll budget."
+    return f"This route leaves ${projected_remaining:.2f} in the selected toll budget."
+
+
+def _route_value_explanation(candidate: RouteValueCandidate) -> str:
+    return (
+        f"Recommended strategy: {candidate.strategy}. "
+        f"Pay for: {candidate.toll_worth_paying}. "
+        f"Avoid: {candidate.toll_not_worth_paying}. "
+        f"{candidate.enter_guidance} {candidate.exit_guidance} "
+        f"{candidate.service_road_guidance} {candidate.budget_impact}"
+    )
+
+
+def _fastest_route_minutes(route_option: NormalizedRouteOption) -> int:
+    service_minutes = _service_minutes(route_option)
+    local_minutes = sum(
+        segment.estimated_minutes
+        for segment in route_option.segments
+        if segment.segment_type == "local_road"
+    )
+    return max(route_option.total_minutes - min(service_minutes + local_minutes, 10), 1)
+
+
+def _service_minutes(route_option: NormalizedRouteOption) -> int:
+    return sum(
+        segment.estimated_minutes
+        for segment in route_option.segments
+        if segment.segment_type in {"service_road", "local_road"}
+    )
+
+
+def _toll_segments(route_option: NormalizedRouteOption) -> List[NormalizedRouteSegment]:
+    return [
+        segment
+        for segment in route_option.segments
+        if segment.segment_type == "toll" and segment.estimated_cost > 0
+    ]
+
+
+def _connector_segments(
+    segments: List[NormalizedRouteSegment],
+) -> List[NormalizedRouteSegment]:
+    connector_segments = [
+        segment
+        for segment in segments
+        if _is_connector_or_bridge(segment)
+    ]
+    if connector_segments:
+        return connector_segments
+    return []
+
+
+def _unique_segments(
+    segments: List[NormalizedRouteSegment],
+) -> List[NormalizedRouteSegment]:
+    seen = set()
+    unique = []
+    for segment in segments:
+        key = segment.segment_label
+        if key not in seen:
+            unique.append(segment)
+            seen.add(key)
+    return unique
+
+
+def _without_connector_segment(
+    segments: List[NormalizedRouteSegment],
+) -> List[NormalizedRouteSegment]:
+    connector_labels = {
+        segment.segment_label
+        for segment in _connector_segments(segments)
+    }
+    return [
+        segment
+        for segment in segments
+        if segment.segment_label not in connector_labels
+    ]
+
+
+def _high_value_segments(
+    segments: List[NormalizedRouteSegment],
+) -> List[NormalizedRouteSegment]:
+    high_value = [
+        segment
+        for segment in segments
+        if segment.estimated_minutes / max(segment.estimated_cost, 0.01) >= 2.5
+    ]
+    if high_value:
+        return high_value
+    if not segments:
+        return []
+    return [max(segments, key=lambda segment: segment.estimated_minutes / max(segment.estimated_cost, 0.01))]
+
+
+def _low_value_segments(
+    segments: List[NormalizedRouteSegment],
+) -> List[NormalizedRouteSegment]:
+    high_value_labels = {
+        segment.segment_label
+        for segment in _high_value_segments(segments)
+    }
+    return [
+        segment
+        for segment in segments
+        if segment.segment_label not in high_value_labels
+    ]
+
+
+def _is_connector_or_bridge(segment: NormalizedRouteSegment) -> bool:
+    label = f"{segment.segment_label} {segment.road_name}".lower()
+    return any(keyword in label for keyword in ["bridge", "connector", "ramp"])
+
+
+def _paid_charge_reason(segment: NormalizedRouteSegment) -> str:
+    value = segment.estimated_minutes / max(segment.estimated_cost, 0.01)
+    return (
+        f"Worth paying because it provides about {segment.estimated_minutes} "
+        f"minutes of toll-road usefulness at {value:.1f} minutes per dollar."
+    )
+
+
+def _avoided_charge_reason(segment: NormalizedRouteSegment, strategy: str) -> str:
+    if _is_connector_or_bridge(segment):
+        return "Avoided because this bridge, ramp, or connector toll has low route value."
+    if strategy == "delayed_toll_entry":
+        return "Avoided by delaying toll entry until the paid segment becomes useful."
+    if strategy == "early_toll_exit":
+        return "Avoided by exiting before the route stops extracting enough toll value."
+    if strategy == "service_road_to_destination":
+        return "Avoided by staying on service/local road to the destination."
+    return "Avoided because the segment does not provide enough value for the budget."
 
 
 def _budget_limit(

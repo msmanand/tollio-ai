@@ -1,0 +1,172 @@
+{
+  "coit_121_to_lewisville": {
+    "route_id": "coit_121_to_lewisville",
+    "route_label": "Coit/121 to Lewisville value route",
+    "segments": [
+      {
+        "segment_label": "121 Entry Scanner",
+        "road_name": "Sam Rayburn Tollway",
+        "start_location": "Coit Road",
+        "end_location": "Preston Road",
+        "segment_type": "toll",
+        "estimated_minutes": 2,
+        "estimated_cost": 1.2,
+        "distance_miles": 1.4
+      },
+      {
+        "segment_label": "121 Mainline Useful Segment",
+        "road_name": "Sam Rayburn Tollway",
+        "start_location": "Preston Road",
+        "end_location": "Josey Lane",
+        "segment_type": "toll",
+        "estimated_minutes": 12,
+        "estimated_cost": 2.0,
+        "distance_miles": 8.2
+      },
+      {
+        "segment_label": "Lewisville Bridge Connector",
+        "road_name": "121 Bridge Connector",
+        "start_location": "Josey Lane",
+        "end_location": "Lewisville",
+        "segment_type": "toll",
+        "estimated_minutes": 2,
+        "estimated_cost": 5.0,
+        "distance_miles": 1.8
+      },
+      {
+        "segment_label": "121 Business Service Road",
+        "road_name": "121 Business",
+        "start_location": "Josey Lane",
+        "end_location": "Lewisville",
+        "segment_type": "service_road",
+        "estimated_minutes": 14,
+        "estimated_cost": 0.0,
+        "distance_miles": 7.1
+      }
+    ]
+  },
+  "delayed_entry_better": {
+    "route_id": "delayed_entry_better",
+    "route_label": "Delayed entry after low-value scanner",
+    "segments": [
+      {
+        "segment_label": "Low-value Entry Scanner",
+        "road_name": "Sample Tollway",
+        "start_location": "Origin",
+        "end_location": "First Ramp",
+        "segment_type": "toll",
+        "estimated_minutes": 1,
+        "estimated_cost": 4.0,
+        "distance_miles": 1.2
+      },
+      {
+        "segment_label": "Useful Mainline Toll",
+        "road_name": "Sample Tollway",
+        "start_location": "First Ramp",
+        "end_location": "Destination",
+        "segment_type": "toll",
+        "estimated_minutes": 14,
+        "estimated_cost": 2.0,
+        "distance_miles": 9.5
+      }
+    ]
+  },
+  "service_road_destination": {
+    "route_id": "service_road_destination",
+    "route_label": "Service road to destination",
+    "segments": [
+      {
+        "segment_label": "Short Toll Scanner",
+        "road_name": "Suburban Tollway",
+        "start_location": "Origin",
+        "end_location": "Midpoint",
+        "segment_type": "toll",
+        "estimated_minutes": 2,
+        "estimated_cost": 5.0,
+        "distance_miles": 2.0
+      },
+      {
+        "segment_label": "Parallel Service Road",
+        "road_name": "Business 121",
+        "start_location": "Midpoint",
+        "end_location": "Destination",
+        "segment_type": "service_road",
+        "estimated_minutes": 8,
+        "estimated_cost": 0.0,
+        "distance_miles": 4.2
+      }
+    ]
+  },
+  "urgent_full_toll": {
+    "route_id": "urgent_full_toll",
+    "route_label": "Urgent full toll value",
+    "segments": [
+      {
+        "segment_label": "Fast Toll Core",
+        "road_name": "Dallas North Tollway",
+        "start_location": "Origin",
+        "end_location": "Downtown",
+        "segment_type": "toll",
+        "estimated_minutes": 18,
+        "estimated_cost": 2.0,
+        "distance_miles": 12.0
+      },
+      {
+        "segment_label": "Fast Connector",
+        "road_name": "Downtown Connector",
+        "start_location": "Downtown Edge",
+        "end_location": "Destination",
+        "segment_type": "toll",
+        "estimated_minutes": 8,
+        "estimated_cost": 1.0,
+        "distance_miles": 4.0
+      }
+    ]
+  },
+  "budget_pressure": {
+    "route_id": "budget_pressure",
+    "route_label": "Budget pressure route",
+    "segments": [
+      {
+        "segment_label": "Moderate Entry Toll",
+        "road_name": "Sample Tollway",
+        "start_location": "Origin",
+        "end_location": "Mainline",
+        "segment_type": "toll",
+        "estimated_minutes": 3,
+        "estimated_cost": 3.0,
+        "distance_miles": 2.1
+      },
+      {
+        "segment_label": "Moderate Mainline Toll",
+        "road_name": "Sample Tollway",
+        "start_location": "Mainline",
+        "end_location": "Connector",
+        "segment_type": "toll",
+        "estimated_minutes": 7,
+        "estimated_cost": 3.0,
+        "distance_miles": 5.2
+      },
+      {
+        "segment_label": "Low Value Bridge Connector",
+        "road_name": "Bridge Connector",
+        "start_location": "Connector",
+        "end_location": "Destination",
+        "segment_type": "toll",
+        "estimated_minutes": 2,
+        "estimated_cost": 5.0,
+        "distance_miles": 1.0
+      },
+      {
+        "segment_label": "Parallel Local Road",
+        "road_name": "Local Road",
+        "start_location": "Connector",
+        "end_location": "Destination",
+        "segment_type": "local_road",
+        "estimated_minutes": 12,
+        "estimated_cost": 0.0,
+        "distance_miles": 5.0
+      }
+    ]
+  }
+}

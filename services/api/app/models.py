@@ -98,6 +98,12 @@ class BudgetDashboardSummary(BaseModel):
     dashboard_message: str
 
 
+class RouteCharge(BaseModel):
+    label: str
+    amount: float
+    reason: str
+
+
 class CommutePlanResponse(BaseModel):
     recommended_route_summary: str
     natural_route_cost: float
@@ -115,6 +121,12 @@ class CommutePlanResponse(BaseModel):
     route_segments: List[RouteSegment]
     map_markers: List[MapMarker]
     budget_summary: Optional[BudgetDashboardSummary] = None
+    recommended_strategy: Optional[str] = None
+    route_value_score: Optional[float] = None
+    toll_minutes_used: Optional[int] = None
+    service_road_minutes: Optional[int] = None
+    avoided_charges: List[RouteCharge] = Field(default_factory=list)
+    paid_charges: List[RouteCharge] = Field(default_factory=list)
 
 
 class TripSaveRequest(BaseModel):
