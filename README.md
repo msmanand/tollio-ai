@@ -6,6 +6,56 @@ Built by Anand Meenakshi Sundaram.
 
 AI coding tools may assist implementation, but product strategy, architecture, and the Gantry Intelligence concept are founder-led.
 
+## Submission Runtime Quick Start
+
+- Repository: `https://github.com/msmanand/tollio-ai`
+- License: MIT, see `LICENSE`
+- Local API:
+
+```sh
+cd services/api
+source .venv/bin/activate
+uvicorn main:app --reload
+```
+
+- Local demo dashboard:
+
+```sh
+cd apps/demo
+source /Users/tsp00/.nvm/nvm.sh
+nvm use 22
+npm install
+npm run dev
+```
+
+- Gemini runtime proof endpoint:
+
+```sh
+curl http://localhost:8000/api/v1/demo/gemini-invocation
+```
+
+- Agent Builder / ADK-compatible runtime command:
+
+```sh
+cd services/agent
+source .venv/bin/activate
+python -m app.tollio_agent_runtime
+```
+
+- MongoDB MCP config path: `services/agent/mcp.mongodb.json`
+- Required env vars for live integrations:
+  - Gemini: `TOLLIO_AGENT_MODE=live`, `GEMINI_API_KEY=...`
+  - MongoDB: `TOLLIO_STORAGE_MODE=mongodb`, `MONGODB_URI=...`, `MONGODB_DATABASE=tollio_ai`
+  - Demo hosting CORS: `TOLLIO_CORS_ORIGINS=https://YOUR_VERCEL_APP.vercel.app`
+  - Demo API URL: `VITE_TOLLIO_API_URL=https://YOUR_API_HOST`
+- Test commands:
+
+```sh
+cd services/api && source .venv/bin/activate && pytest
+cd ../../services/agent && source .venv/bin/activate && pytest
+cd ../../apps/demo && source /Users/tsp00/.nvm/nvm.sh && nvm use 22 && npm install && npm run build
+```
+
 ## Thesis
 
 Tollio AI is a budget-aware toll routing agent that helps drivers decide which toll gantries are worth paying, when to exit before unnecessary toll scanners, and how to stay under daily, weekly, or monthly toll budgets.
@@ -49,6 +99,7 @@ Demo materials:
 - [Submission summary](docs/demo/submission-summary.md)
 - [Demo verification](docs/demo/demo-verification.md)
 - [Final audit report](docs/demo/final-audit-report.md)
+- [Submission compliance](docs/demo/submission-compliance.md)
 
 Mock mode is the default for safe judging and local demos. The working demo uses NTTA matrix data, deterministic toll intelligence, and route-value options. Google Routes, MongoDB, and Gemini are live-gated/readiness-enabled.
 
@@ -78,7 +129,7 @@ export GEMINI_API_KEY=YOUR_GEMINI_API_KEY
 curl http://localhost:8000/api/v1/demo/gemini-invocation
 ```
 
-The response includes `gemini_ready`, `gemini_invoked`, and `explanation_data_source`.
+The response includes `mode`, `gemini_configured`, `invocation_path`, `sample_explanation`, and `status`.
 
 ### Google Cloud Agent Builder-Compatible Agent Flow
 
@@ -97,6 +148,14 @@ Run the deterministic agent:
 cd services/agent
 source .venv/bin/activate
 TOLLIO_AGENT_MODE=mock python main.py
+```
+
+Run the Agent Builder / ADK-compatible runtime entry point:
+
+```sh
+cd services/agent
+source .venv/bin/activate
+python -m app.tollio_agent_runtime
 ```
 
 ### MongoDB MCP Partner Track Usage

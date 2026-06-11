@@ -68,19 +68,23 @@ def demo_gemini_invocation() -> dict:
         )
     )
     explanation = generate_explanation(sample_plan)
+    gemini_invoked = explanation.data_source == "live_gemini"
     return {
-        "endpoint": "/api/v1/demo/gemini-invocation",
-        "gemini_ready": status.gemini_ready,
-        "agent_mode": status.agent_mode,
-        "gemini_invoked": explanation.data_source == "live_gemini",
-        "explanation_data_source": explanation.data_source,
-        "safety_note": (
-            "Live Gemini is called only when TOLLIO_AGENT_MODE=live and GEMINI_API_KEY is set. "
-            "Mock explanation mode remains the default."
-        ),
-        "short_explanation": explanation.short_explanation,
-        "driver_friendly_summary": explanation.driver_friendly_summary,
-        "caution_notes": explanation.caution_notes,
+        "mode": status.agent_mode,
+        "gemini_configured": status.gemini_ready,
+        "invocation_path": {
+            "endpoint": "/api/v1/demo/gemini-invocation",
+            "service": "services/api/app/services/explanation_service.py",
+            "live_gate": "TOLLIO_AGENT_MODE=live and GEMINI_API_KEY present",
+            "gemini_invoked": gemini_invoked,
+            "data_source": explanation.data_source,
+        },
+        "sample_explanation": {
+            "short_explanation": explanation.short_explanation,
+            "driver_friendly_summary": explanation.driver_friendly_summary,
+            "caution_notes": explanation.caution_notes,
+        },
+        "status": "live_gemini_invoked" if gemini_invoked else "mock_explanation_returned",
     }
 
 

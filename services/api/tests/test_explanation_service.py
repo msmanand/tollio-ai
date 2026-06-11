@@ -153,9 +153,11 @@ def test_demo_gemini_invocation_endpoint_is_safe_without_credentials(monkeypatch
 
     assert response.status_code == 200
     body = response.json()
-    assert body["gemini_ready"] is False
-    assert body["gemini_invoked"] is False
-    assert body["explanation_data_source"] == "mock_explanation_service"
+    assert body["mode"] == "mock"
+    assert body["gemini_configured"] is False
+    assert body["invocation_path"]["gemini_invoked"] is False
+    assert body["invocation_path"]["data_source"] == "mock_explanation_service"
+    assert body["status"] == "mock_explanation_returned"
 
 
 def test_demo_gemini_invocation_endpoint_uses_live_path_when_gated(monkeypatch):
@@ -187,6 +189,9 @@ def test_demo_gemini_invocation_endpoint_uses_live_path_when_gated(monkeypatch):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["gemini_ready"] is True
-    assert body["gemini_invoked"] is True
-    assert body["explanation_data_source"] == "live_gemini"
+    assert body["mode"] == "live"
+    assert body["gemini_configured"] is True
+    assert body["invocation_path"]["gemini_invoked"] is True
+    assert body["invocation_path"]["data_source"] == "live_gemini"
+    assert body["sample_explanation"]["short_explanation"] == "endpoint live"
+    assert body["status"] == "live_gemini_invoked"
