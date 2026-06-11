@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from functools import cmp_to_key
 from typing import Dict, List, Optional, Tuple
 
-from app.data.ntta_rates import NTTARateEntry, get_toll_point_by_name, toll_points
-from app.data.ntta_roads import DNT, SH121
+from app.data.ntta_matrix import NTTAMatrixRoad, find_exit_index, find_road, load_matrix_roads
+from app.data.ntta_rates import NTTARateEntry
 
 
 TrafficMode = str
@@ -17,6 +17,8 @@ class BrainRoad:
     name: str
     exits: List[str]
     matrix: Optional[Dict[Tuple[int, int], Optional[float]]] = None
+    tolltag_matrix: Optional[Dict[Tuple[int, int], Optional[float]]] = None
+    zipcash_matrix: Optional[Dict[Tuple[int, int], Optional[float]]] = None
     toll_points_by_exit: Optional[Dict[int, NTTARateEntry]] = None
 
 
@@ -126,8 +128,18 @@ class ServiceRoadResult:
 def getPrice(road: BrainRoad, a: int, b: int, payment: TollPayment = "tolltag") -> Optional[float]:
     if a == b:
         return 0.0
+    if road.tolltag_matrix is not None and road.zipcash_matrix is not None:
+        table = road.tolltag_matrix if payment == "tolltag" else road.zipcash_matrix
+        pair = _pair(a, b)
+        if pair not in table:
+            return None
+        value = table[pair]
+        return 0.0 if value is None else round(float(value), 2)
     if road.matrix is not None:
-        value = road.matrix.get(_pair(a, b))
+        pair = _pair(a, b)
+        if pair not in road.matrix:
+            return None
+        value = road.matrix[pair]
         return 0.0 if value is None else round(float(value), 2)
     if road.toll_points_by_exit is None:
         return None
@@ -488,9 +500,26 @@ def optimize_trip_by_names(
     return optimizeTrip(from_road, from_exit, to_road, to_exit, profile)
 
 
+def optimize_trip_by_matrix_names(
+    road_name: str,
+    from_exit: str,
+    to_exit: str,
+    profile: BrainProfile,
+) -> List[OptimizationResult]:
+    road = find_road(road_name)
+    if road is None:
+        return []
+    from_index = find_exit_index(road, from_exit)
+    to_index = find_exit_index(road, to_exit)
+    if from_index is None or to_index is None:
+        return []
+    roads = matrix_brain_roads()
+    return optimizeTrip(road.road_id, from_index, road.road_id, to_index, profile, roads)
+
+
 def find_exit(name: str) -> Optional[Tuple[int, int]]:
     normalized = _normalize(name)
-    for road in OFFICIAL_ROADS:
+    for road in matrix_brain_roads():
         for index, exit_name in enumerate(road.exits):
             if normalized == _normalize(exit_name) or normalized in _normalize(exit_name):
                 return road.id, index
@@ -570,10 +599,27 @@ def _road_matches(road_short: str, road_name: str) -> bool:
     return False
 
 
-OFFICIAL_ROADS_SEED = [
-    (0, "DNT"),
-    (2, "SH-121"),
-]
+def matrix_brain_roads() -> List[BrainRoad]:
+    return [_matrix_road_to_brain(road) for road in load_matrix_roads()]
+
+
+def _matrix_road_to_brain(road: NTTAMatrixRoad) -> BrainRoad:
+    return BrainRoad(
+        id=road.road_id,
+        short=road.road_short,
+        name=road.road_name,
+        exits=road.exits,
+        tolltag_matrix={
+            _pair(row_index, column_index): value
+            for row_index, row in enumerate(road.tolltag)
+            for column_index, value in enumerate(row)
+        },
+        zipcash_matrix={
+            _pair(row_index, column_index): value
+            for row_index, row in enumerate(road.zipcash)
+            for column_index, value in enumerate(row)
+        },
+    )
 
 EXIT_ALIASES = {
     "Royal Lane": (0, 3),
@@ -588,30 +634,4 @@ EXIT_ALIASES = {
     "Josey Main Lane Gantry": (2, 8),
 }
 
-OFFICIAL_ROADS = [
-    BrainRoad(
-        id=0,
-        short="DNT",
-        name=DNT.name,
-        exits=DNT.exits,
-        toll_points_by_exit={},
-    ),
-    BrainRoad(
-        id=2,
-        short="SH-121",
-        name=SH121.name,
-        exits=SH121.exits,
-        toll_points_by_exit={},
-    ),
-]
-
-OFFICIAL_ROADS = [
-    BrainRoad(
-        id=road.id,
-        short=road.short,
-        name=road.name,
-        exits=road.exits,
-        toll_points_by_exit=_official_toll_points_by_exit(road.short, road.exits),
-    )
-    for road in OFFICIAL_ROADS
-]
+OFFICIAL_ROADS = matrix_brain_roads()

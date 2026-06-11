@@ -126,7 +126,7 @@ def test_optimize_trip_ranks_best_result():
 
 
 def test_no_invented_toll_values_for_unmapped_official_relationship():
-    assert getPrice(OFFICIAL_ROADS[0], 1, 2, "tolltag") is None
+    assert getPrice(OFFICIAL_ROADS[0], 1, 99, "tolltag") is None
 
 
 def test_project_annual_saving():

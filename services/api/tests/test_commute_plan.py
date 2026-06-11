@@ -109,7 +109,7 @@ def test_commute_plan_returns_brain_recommendation_for_ntta_toll_points():
     body = response.json()
     recommendation = body["brain_recommendation"]
     assert recommendation["natural_entry"] == "Walnut Hill/Royal"
-    assert recommendation["better_entry"] == "Spring Valley"
+    assert recommendation["better_entry"] == "Forest/Harvest Hill"
     assert recommendation["natural_exit"] == "Trinity Mills/Frankford"
     assert recommendation["better_exit"] == "Keller Springs"
     assert recommendation["toll_saved"] > 0
