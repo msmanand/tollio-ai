@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -60,9 +61,17 @@ def run_agent_runtime(request: Optional[AgentRequest] = None) -> Dict[str, Any]:
             "gantry_intelligence_tool_called": True,
             "route_options_count": len(route_options),
             "optimized_toll_cost": optimized_cost,
+            "ntta_data_source": _ntta_data_source(),
         },
         "budget": budget_status.model_dump(mode="json"),
         "memory_trace": memory_trace,
+        "gemini_trace": {
+            "tool_name": "gemini_explanation_tool",
+            "mode": os.getenv("TOLLIO_AGENT_MODE", "mock").strip().lower(),
+            "gemini_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
+            "gemini_invoked": explanation.get("gemini_invoked", False),
+            "data_source": explanation.get("data_source"),
+        },
         "gemini_explanation": explanation,
     }
 
@@ -106,6 +115,12 @@ def _memory_trace(request: AgentRequest, optimized_cost: float) -> list[dict]:
             }
         )
     return trace
+
+
+def _ntta_data_source() -> str:
+    if os.getenv("TOLLIO_STORAGE_MODE", "mock").strip().lower() == "mongodb" and os.getenv("MONGODB_URI"):
+        return "mongodb"
+    return "local_json"
 
 
 def _optimized_toll_cost(natural_cost: float, gantry_decisions) -> float:

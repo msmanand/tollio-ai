@@ -70,3 +70,39 @@ def test_agent_gemini_tool_invokes_live_path_when_gated(monkeypatch):
     assert output["data_source"] == "live_gemini"
     assert output["explanation"] == "live runtime explanation"
     assert calls
+
+
+def test_runtime_reports_live_memory_and_gemini_traces(monkeypatch):
+    def fake_save_trip_decision_tool(**kwargs):
+        return {"status": "saved", "data_source": "mongodb", **kwargs}
+
+    def fake_recent_tool(**kwargs):
+        return {"recent_commutes": [], "data_source": "mongodb", **kwargs}
+
+    def fake_savings_tool(**kwargs):
+        return {"status": "updated", "data_source": "mongodb", **kwargs}
+
+    def fake_gemini_tool(context):
+        return {
+            "tool_name": "gemini_explanation_tool",
+            "status": "live",
+            "gemini_invoked": True,
+            "explanation": "Live Gemini explanation from deterministic Tollio result.",
+            "data_source": "live_gemini",
+        }
+
+    monkeypatch.setenv("TOLLIO_STORAGE_MODE", "mongodb")
+    monkeypatch.setenv("MONGODB_URI", "mongodb://test-only")
+    monkeypatch.setenv("TOLLIO_AGENT_MODE", "live")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only-key")
+    monkeypatch.setattr("app.tollio_agent_runtime.save_trip_decision_tool", fake_save_trip_decision_tool)
+    monkeypatch.setattr("app.tollio_agent_runtime.get_recent_commutes_tool", fake_recent_tool)
+    monkeypatch.setattr("app.tollio_agent_runtime.update_savings_summary_tool", fake_savings_tool)
+    monkeypatch.setattr("app.tollio_agent_runtime.gemini_explanation_tool", fake_gemini_tool)
+
+    output = run_agent_runtime()
+
+    assert output["route_toll_optimization"]["ntta_data_source"] == "mongodb"
+    assert output["memory_trace"][0]["output"]["data_source"] == "mongodb"
+    assert output["gemini_trace"]["gemini_invoked"] is True
+    assert output["gemini_trace"]["data_source"] == "live_gemini"

@@ -1,8 +1,9 @@
 import json
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
+
+from app.persistence.mongodb_client import MongoDBConnectionError, get_database, should_use_mongodb
 
 
 TollPayment = str
@@ -38,11 +39,63 @@ class PriceLookup:
 DATA_FILE = Path(__file__).with_name("ntta_matrices_april_2025.json")
 
 
-@lru_cache(maxsize=1)
+_LOCAL_MATRIX_CACHE: Optional[List[NTTAMatrixRoad]] = None
+
+
 def load_matrix_roads() -> List[NTTAMatrixRoad]:
+    if should_use_mongodb():
+        try:
+            roads = load_matrix_roads_from_mongodb()
+            if roads:
+                return roads
+        except MongoDBConnectionError:
+            if _strict_mongodb_mode():
+                raise
+        except Exception:
+            if _strict_mongodb_mode():
+                raise
+    return load_matrix_roads_from_json()
+
+
+def load_matrix_roads_from_json() -> List[NTTAMatrixRoad]:
+    global _LOCAL_MATRIX_CACHE
+    if _LOCAL_MATRIX_CACHE is not None:
+        return _LOCAL_MATRIX_CACHE
     payload = json.loads(DATA_FILE.read_text())
+    _LOCAL_MATRIX_CACHE = _roads_from_payload(payload)
+    return _LOCAL_MATRIX_CACHE
+
+
+def load_matrix_roads_from_mongodb(database=None) -> List[NTTAMatrixRoad]:
+    db = database if database is not None else get_database()
+    if db is None:
+        return []
+    docs = list(db["ntta_matrices"].find({}, {"_id": 0}).sort("road_id", 1))
+    if not docs:
+        return []
+    payload = {
+        "source_file": "MongoDB ntta_matrices",
+        "effective_date": docs[0].get("effective_date", "unknown"),
+        "confidence": docs[0].get("confidence", "unknown"),
+        "roads": docs,
+    }
+    return _roads_from_payload(payload)
+
+
+def matrix_data_source() -> str:
+    if should_use_mongodb():
+        try:
+            if load_matrix_roads_from_mongodb():
+                return "mongodb"
+            return "local_json_fallback_empty_mongodb"
+        except Exception:
+            return "local_json_fallback_mongodb_unavailable"
+    return "local_json"
+
+
+def _roads_from_payload(payload: dict) -> List[NTTAMatrixRoad]:
     roads = []
-    for item in payload["roads"]:
+    for item in payload.get("roads", []):
         source = item.get("source_metadata", {})
         roads.append(
             NTTAMatrixRoad(
@@ -58,6 +111,12 @@ def load_matrix_roads() -> List[NTTAMatrixRoad]:
             )
         )
     return roads
+
+
+def _strict_mongodb_mode() -> bool:
+    import os
+
+    return os.getenv("TOLLIO_MONGODB_STRICT", "false").strip().lower() == "true"
 
 
 def find_road(road: str) -> Optional[NTTAMatrixRoad]:

@@ -10,9 +10,10 @@ from app.models import (
     TripSaveResponse,
     UrgencyMode,
 )
-from app.data.ntta_matrix import exit_options, find_exit_index, find_road, get_matrix_price, road_options
+from app.data.ntta_matrix import exit_options, find_exit_index, find_road, get_matrix_price, matrix_data_source, road_options
 from app.data.ntta_rates import find_toll_points, toll_points, unknown_rate
 from app.persistence.budget_repository import get_budget_repository
+from app.persistence.optimization_repository import save_optimization_run, write_memory_probe
 from app.persistence.trip_repository import get_trip_repository
 from app.services.budget_engine import evaluate_budget
 from app.services.commute_planner import build_commute_plan
@@ -78,6 +79,7 @@ def demo_gemini_invocation() -> dict:
             "live_gate": "TOLLIO_AGENT_MODE=live and GEMINI_API_KEY present",
             "gemini_invoked": gemini_invoked,
             "data_source": explanation.data_source,
+            "live_error": explanation.live_error,
         },
         "sample_explanation": {
             "short_explanation": explanation.short_explanation,
@@ -85,6 +87,24 @@ def demo_gemini_invocation() -> dict:
             "caution_notes": explanation.caution_notes,
         },
         "status": "live_gemini_invoked" if gemini_invoked else "mock_explanation_returned",
+    }
+
+
+@router.get("/api/v1/demo/mongodb-invocation")
+def demo_mongodb_invocation() -> dict:
+    status = get_system_status()
+    source = matrix_data_source()
+    roads = road_options()
+    memory_write = write_memory_probe()
+    mongodb_ready = status.mongodb_ready and source == "mongodb"
+    return {
+        "mongodb_mode": status.mongodb_mode,
+        "mongodb_ready": mongodb_ready,
+        "ntta_source": source,
+        "collections_checked": ["ntta_matrices", "optimization_runs"],
+        "sample_road_count": len(roads),
+        "memory_write_test": memory_write,
+        "status": "mongodb_runtime_ready" if mongodb_ready else "local_json_or_mongodb_unavailable",
     }
 
 
@@ -118,7 +138,7 @@ def ntta_rates(entry: str, exit: str, vehicle_class: str = "two_axle_passenger")
 
 @router.get("/api/v1/ntta/roads")
 def ntta_roads() -> dict:
-    return {"roads": road_options()}
+    return {"roads": road_options(), "source_metadata": {"data_source": matrix_data_source()}}
 
 
 @router.get("/api/v1/ntta/exits")
@@ -158,6 +178,7 @@ def ntta_price(road: str, from_exit: str, to_exit: str, payment: str = "tolltag"
             "effective_date": lookup.effective_date,
             "payment_type": payment,
             "confidence": lookup.confidence,
+            "data_source": matrix_data_source(),
         },
     }
 
@@ -204,6 +225,8 @@ def optimize_entry_exit(request: dict) -> dict:
     natural_route = next(item for item in all_candidates if item["label"] == "Natural Route")
     optimized_route = ranked_options[0]
     recommendation = _recommendation_from_candidate(optimized_route, natural_route)
+    source_metadata = _source_metadata(matched_from_road)
+    memory_write = save_optimization_run(request, optimized_route, ranked_options, source_metadata)
     return {
         "natural_route": natural_route,
         "optimized_route": optimized_route,
@@ -212,7 +235,8 @@ def optimize_entry_exit(request: dict) -> dict:
         "all_candidates": all_candidates,
         "explanation": optimized_route["explanation"],
         "recommendation": recommendation,
-        "source_metadata": _source_metadata(matched_from_road),
+        "source_metadata": source_metadata,
+        "optimization_memory": memory_write,
     }
 
 
@@ -761,6 +785,7 @@ def _source_metadata(road) -> dict:
         "effective_date": road.effective_date,
         "payment_types": ["tolltag", "zipcash"],
         "confidence": road.confidence,
+        "data_source": matrix_data_source(),
     }
 
 

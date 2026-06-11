@@ -35,13 +35,13 @@ def get_mongodb_client(client_factory=None) -> Optional[Any]:
     else:
         handled_errors = (Exception,)
 
-    client = client_factory(
-        uri,
-        serverSelectionTimeoutMS=2000,
-        connectTimeoutMS=2000,
-        socketTimeoutMS=2000,
-    )
     try:
+        client = client_factory(
+            uri,
+            serverSelectionTimeoutMS=2000,
+            connectTimeoutMS=2000,
+            socketTimeoutMS=2000,
+        )
         client.admin.command("ping")
     except handled_errors as exc:
         raise MongoDBConnectionError(

@@ -34,6 +34,18 @@ npm run dev
 curl http://localhost:8000/api/v1/demo/gemini-invocation
 ```
 
+- MongoDB runtime proof endpoint:
+
+```sh
+curl http://localhost:8000/api/v1/demo/mongodb-invocation
+```
+
+- Seed NTTA matrix data to MongoDB Atlas after setting `MONGODB_URI`:
+
+```sh
+python scripts/seed_ntta_to_mongodb.py
+```
+
 - Agent Builder / ADK-compatible runtime command:
 
 ```sh
@@ -89,7 +101,7 @@ Gantry Intelligence Engine: analyzes toll roads at gantry and segment level inst
 
 The repository now includes the mock-mode FastAPI commute planning API, mock-mode agent skeleton, Google Routes adapter boundary, deterministic Gantry Intelligence Engine, and focused API/agent tests. Live Google Routes, Gemini, MongoDB/MCP, and mobile UI work remain gated or future-facing unless explicitly merged in later branches.
 
-Tollio uses Google Routes for route geometry/ETA readiness and NTTA static toll-tier data for DFW gantry value scoring in the local demo.
+Tollio uses NTTA matrix data for DFW toll intelligence in the local demo. When `TOLLIO_STORAGE_MODE=mongodb` and `MONGODB_URI` are configured, NTTA matrix data and optimization run summaries are stored in MongoDB. Google Maps/Routes remains the future route geometry, ETA, and traffic input; it is not required for the NTTA matrix demo.
 
 ## Hackathon Demo
 
@@ -101,7 +113,7 @@ Demo materials:
 - [Final audit report](docs/demo/final-audit-report.md)
 - [Submission compliance](docs/demo/submission-compliance.md)
 
-Mock mode is the default for safe judging and local demos. The working demo uses NTTA matrix data, deterministic toll intelligence, and route-value options. Google Routes, MongoDB, and Gemini are live-gated/readiness-enabled.
+Mock mode is the default for safe judging and local demos. The working demo uses NTTA matrix data, deterministic toll intelligence, and route-value options. MongoDB and Gemini are live-gated runtime paths when credentials are configured. Google Routes is designed as the future geometry/ETA provider and remains gated.
 
 ## Hackathon Compliance
 
@@ -130,6 +142,21 @@ curl http://localhost:8000/api/v1/demo/gemini-invocation
 ```
 
 The response includes `mode`, `gemini_configured`, `invocation_path`, `sample_explanation`, and `status`.
+
+### MongoDB Runtime Usage
+
+MongoDB stores official NTTA matrix documents in `ntta_matrices`, optimization run summaries in `optimization_runs`, and agent memory/tool traces through the MongoDB memory tool. The API reads NTTA roads, exits, and matrix prices from MongoDB first when `TOLLIO_STORAGE_MODE=mongodb` and `MONGODB_URI` are configured, then falls back to local JSON if MongoDB is unavailable in non-strict mode.
+
+Seed and verify:
+
+```sh
+set -a
+source .env.local
+set +a
+python scripts/seed_ntta_to_mongodb.py
+curl http://localhost:8000/api/v1/demo/mongodb-invocation
+curl http://localhost:8000/api/v1/ntta/roads
+```
 
 ### Google Cloud Agent Builder-Compatible Agent Flow
 

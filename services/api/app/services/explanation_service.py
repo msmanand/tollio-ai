@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any, List
+from typing import Any, List, Optional
 from urllib import request as urllib_request
 
 from pydantic import BaseModel
@@ -12,20 +12,26 @@ class ExplanationBundle(BaseModel):
     driver_friendly_summary: str
     caution_notes: List[str]
     data_source: str
+    live_error: Optional[str] = None
 
 
 def generate_explanation(commute_plan_output: Any) -> ExplanationBundle:
     if _live_gemini_enabled():
         try:
             return _generate_live_gemini_explanation(commute_plan_output)
-        except OSError:
-            return _generate_mock_explanation(commute_plan_output, data_source="mock_gemini_fallback")
+        except Exception as exc:
+            return _generate_mock_explanation(
+                commute_plan_output,
+                data_source="mock_gemini_fallback",
+                live_error=exc.__class__.__name__,
+            )
     return _generate_mock_explanation(commute_plan_output)
 
 
 def _generate_mock_explanation(
     commute_plan_output: Any,
     data_source: str = "mock_explanation_service",
+    live_error: Optional[str] = None,
 ) -> ExplanationBundle:
     decisions = list(getattr(commute_plan_output, "gantry_decisions", []))
     total_toll_avoided = round(sum(decision.toll_cost_avoided for decision in decisions), 2)
@@ -56,12 +62,15 @@ def _generate_mock_explanation(
         "Decisions come from Tollio's deterministic Gantry Intelligence Engine.",
         "Live Gemini explanations are disabled unless TOLLIO_AGENT_MODE=live and GEMINI_API_KEY is set.",
     ]
+    if live_error:
+        notes.append(f"Live Gemini path was attempted but returned {live_error}.")
     return ExplanationBundle(
         short_explanation=short,
         detailed_explanation=detailed,
         driver_friendly_summary=summary,
         caution_notes=notes,
         data_source=data_source,
+        live_error=live_error,
     )
 
 
@@ -115,6 +124,7 @@ def _build_gemini_prompt(commute_plan_output: Any) -> str:
         "You are explaining Tollio AI commute output to a driver.\n"
         "Do not change toll decisions.\n"
         "Do not invent route data.\n"
+        "Explain only the provided deterministic Tollio result. Do not invent tolls, routes, or prices.\n"
         "Explain only the provided deterministic route/gantry/budget output.\n"
         "Return JSON with short_explanation, detailed_explanation, "
         "driver_friendly_summary, and caution_notes.\n\n"

@@ -19,6 +19,7 @@ def gemini_explanation_tool(context: Dict[str, object]) -> Dict[str, object]:
 
     prompt = (
         "Explain this Tollio commute optimization result in driver-friendly language. "
+        "Explain only the provided deterministic Tollio result. Do not invent tolls, routes, or prices. "
         "Do not change toll decisions. Do not invent route data. Use only this JSON:\n"
         f"{json.dumps(context, indent=2)}"
     )
