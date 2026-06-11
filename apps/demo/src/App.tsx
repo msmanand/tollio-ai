@@ -10,6 +10,9 @@ type RoadOption = {
   source_file: string;
   effective_date: string;
   confidence: string;
+  runtime_data_source: "mongodb" | "local_json";
+  original_rate_source: string;
+  source_confidence: string;
 };
 
 type ExitOption = {
@@ -84,10 +87,13 @@ type OptimizeResponse = {
   explanation: string;
   recommendation: Recommendation;
   source_metadata: {
+    runtime_data_source: "mongodb" | "local_json";
+    original_rate_source: string;
     source_file: string;
     effective_date: string;
     payment_types: string[];
     confidence: string;
+    source_confidence: string;
   };
 };
 
@@ -105,6 +111,10 @@ const defaultForm: OptimizeForm = {
 
 function currency(value: number | undefined | null) {
   return `$${(value ?? 0).toFixed(2)}`;
+}
+
+function runtimeSourceLabel(source: "mongodb" | "local_json" | string | undefined) {
+  return source === "mongodb" ? "MongoDB" : "Local JSON fallback";
 }
 
 export function App() {
@@ -301,7 +311,9 @@ export function App() {
           {error ? <p className="error-text">{error}</p> : null}
           {selectedRoad ? (
             <p className="source-note">
-              Matrix source: {selectedRoad.source_file} · {selectedRoad.effective_date} · {selectedRoad.confidence}
+              Data: Runtime source: {runtimeSourceLabel(selectedRoad.runtime_data_source)} · Rate source:{" "}
+              {selectedRoad.original_rate_source} · Effective: {selectedRoad.effective_date} · Confidence:{" "}
+              {selectedRoad.source_confidence}
             </p>
           ) : null}
         </form>
@@ -332,7 +344,10 @@ export function App() {
                 <div className="why-metrics">
                   <span>Annual projection</span>
                   <strong>{currency(result.recommendation.annual_saving_projection)}</strong>
-                  <small>{result.source_metadata.source_file}</small>
+                  <small>
+                    Runtime source: {runtimeSourceLabel(result.source_metadata.runtime_data_source)} · Rate source:{" "}
+                    {result.source_metadata.original_rate_source}
+                  </small>
                 </div>
               </section>
 

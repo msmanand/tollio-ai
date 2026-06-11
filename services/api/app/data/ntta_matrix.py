@@ -93,6 +93,10 @@ def matrix_data_source() -> str:
     return "local_json"
 
 
+def runtime_data_source() -> str:
+    return "mongodb" if matrix_data_source() == "mongodb" else "local_json"
+
+
 def _roads_from_payload(payload: dict) -> List[NTTAMatrixRoad]:
     roads = []
     for item in payload.get("roads", []):
@@ -185,6 +189,7 @@ def price_by_index(
 
 
 def road_options() -> list[dict]:
+    runtime_source = runtime_data_source()
     return [
         {
             "road_id": road.road_id,
@@ -194,6 +199,9 @@ def road_options() -> list[dict]:
             "source_file": road.source_file,
             "effective_date": road.effective_date,
             "confidence": road.confidence,
+            "runtime_data_source": runtime_source,
+            "original_rate_source": road.source_file,
+            "source_confidence": road.confidence,
         }
         for road in load_matrix_roads()
     ]

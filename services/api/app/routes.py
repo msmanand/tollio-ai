@@ -10,7 +10,15 @@ from app.models import (
     TripSaveResponse,
     UrgencyMode,
 )
-from app.data.ntta_matrix import exit_options, find_exit_index, find_road, get_matrix_price, matrix_data_source, road_options
+from app.data.ntta_matrix import (
+    exit_options,
+    find_exit_index,
+    find_road,
+    get_matrix_price,
+    matrix_data_source,
+    road_options,
+    runtime_data_source,
+)
 from app.data.ntta_rates import find_toll_points, toll_points, unknown_rate
 from app.persistence.budget_repository import get_budget_repository
 from app.persistence.optimization_repository import save_optimization_run, write_memory_probe
@@ -100,7 +108,9 @@ def demo_mongodb_invocation() -> dict:
     return {
         "mongodb_mode": status.mongodb_mode,
         "mongodb_ready": mongodb_ready,
-        "ntta_source": source,
+        "ntta_source": runtime_data_source(),
+        "seeded_matrix_count": len(roads) if source == "mongodb" else 0,
+        "optimization_memory_enabled": status.mongodb_ready,
         "collections_checked": ["ntta_matrices", "optimization_runs"],
         "sample_road_count": len(roads),
         "memory_write_test": memory_write,
@@ -138,7 +148,9 @@ def ntta_rates(entry: str, exit: str, vehicle_class: str = "two_axle_passenger")
 
 @router.get("/api/v1/ntta/roads")
 def ntta_roads() -> dict:
-    return {"roads": road_options(), "source_metadata": {"data_source": matrix_data_source()}}
+    roads = road_options()
+    source = _source_metadata(roads[0]) if roads else _empty_source_metadata()
+    return {"roads": roads, "source_metadata": source}
 
 
 @router.get("/api/v1/ntta/exits")
@@ -154,6 +166,10 @@ def ntta_exits(road: str) -> dict:
         },
         "exits": exit_options(matched_road),
         "source_metadata": _source_metadata(matched_road),
+        "runtime_data_source": runtime_data_source(),
+        "original_rate_source": matched_road.source_file,
+        "effective_date": matched_road.effective_date,
+        "source_confidence": matched_road.confidence,
     }
 
 
@@ -173,6 +189,10 @@ def ntta_price(road: str, from_exit: str, to_exit: str, payment: str = "tolltag"
         "payment": lookup.payment,
         "price": lookup.price,
         "exact_matrix_match": lookup.exact_matrix_match,
+        "runtime_data_source": runtime_data_source(),
+        "original_rate_source": lookup.source_file,
+        "effective_date": lookup.effective_date,
+        "source_confidence": lookup.confidence,
         "source_metadata": {
             "source_file": lookup.source_file,
             "effective_date": lookup.effective_date,
@@ -781,10 +801,26 @@ def _plain_reason(result, road) -> str:
 
 def _source_metadata(road) -> dict:
     return {
-        "source_file": road.source_file,
-        "effective_date": road.effective_date,
+        "runtime_data_source": runtime_data_source(),
+        "original_rate_source": road["original_rate_source"] if isinstance(road, dict) else road.source_file,
+        "effective_date": road["effective_date"] if isinstance(road, dict) else road.effective_date,
+        "source_confidence": road["source_confidence"] if isinstance(road, dict) else road.confidence,
+        "source_file": road["original_rate_source"] if isinstance(road, dict) else road.source_file,
         "payment_types": ["tolltag", "zipcash"],
-        "confidence": road.confidence,
+        "confidence": road["source_confidence"] if isinstance(road, dict) else road.confidence,
+        "data_source": matrix_data_source(),
+    }
+
+
+def _empty_source_metadata() -> dict:
+    return {
+        "runtime_data_source": runtime_data_source(),
+        "original_rate_source": "unknown",
+        "effective_date": "unknown",
+        "source_confidence": "unknown",
+        "source_file": "unknown",
+        "payment_types": ["tolltag", "zipcash"],
+        "confidence": "unknown",
         "data_source": matrix_data_source(),
     }
 

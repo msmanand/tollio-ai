@@ -121,6 +121,8 @@ def test_demo_mongodb_invocation_endpoint_returns_expected_fields(monkeypatch):
         "mongodb_mode",
         "mongodb_ready",
         "ntta_source",
+        "seeded_matrix_count",
+        "optimization_memory_enabled",
         "collections_checked",
         "sample_road_count",
         "memory_write_test",
