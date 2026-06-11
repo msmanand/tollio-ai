@@ -96,3 +96,23 @@ def test_commute_plan_includes_map_markers_from_adapter():
     map_markers = response.json()["map_markers"]
     assert map_markers
     assert any(marker["marker_type"] == "exit" for marker in map_markers)
+
+
+def test_commute_plan_returns_brain_recommendation_for_ntta_toll_points():
+    payload = _sample_request()
+    payload["origin"] = "Royal Lane"
+    payload["destination"] = "Trinity Mills Main Lane Gantry"
+
+    response = client.post("/api/v1/commute/plan", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    recommendation = body["brain_recommendation"]
+    assert recommendation["natural_entry"] == "Walnut Hill/Royal"
+    assert recommendation["better_entry"] == "Spring Valley"
+    assert recommendation["natural_exit"] == "Trinity Mills/Frankford"
+    assert recommendation["better_exit"] == "Keller Springs"
+    assert recommendation["toll_saved"] > 0
+    assert recommendation["net_saving"] > 0
+    assert body["recommended_strategy"] is None
+    assert [option["label"] for option in body["brain_options"]] == ["Natural Route", "Optimized Route"]

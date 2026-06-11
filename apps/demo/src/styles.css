@@ -215,6 +215,92 @@ select:focus {
   padding: 12px;
 }
 
+.brain-panel,
+.brain-comparison {
+  background: #ffffff;
+  border: 1px solid #dbe1e7;
+  border-radius: 8px;
+  margin-bottom: 18px;
+  padding: 16px;
+}
+
+.brain-grid,
+.brain-money {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.brain-fact {
+  background: #f8fafb;
+  border: 1px solid #e6e9ed;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-height: 76px;
+  padding: 12px;
+}
+
+.brain-fact span {
+  color: #5f6368;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.brain-fact strong {
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.brain-why {
+  color: #3c4043;
+  font-weight: 700;
+  margin: 0;
+}
+
+.brain-comparison {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.brain-card {
+  background: #f8fafb;
+  border: 1px solid #e6e9ed;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.brain-card.best {
+  border-color: #34a853;
+  box-shadow: inset 4px 0 0 #34a853;
+}
+
+.brain-card-metrics {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.brain-card-metrics span {
+  background: #ffffff;
+  border: 1px solid #dbe1e7;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 5px 6px;
+}
+
+.brain-card p {
+  color: #3c4043;
+  font-size: 12px;
+  margin: 0;
+}
+
 .value-panel {
   align-items: stretch;
   background: #ffffff;

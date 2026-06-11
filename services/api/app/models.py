@@ -132,6 +132,33 @@ class NTTARatesLookupResponse(BaseModel):
     exit_matches: List[NTTATollPoint]
 
 
+class TollioBrainOption(BaseModel):
+    label: str
+    total_price: float
+    natural_total: float
+    toll_saved: float
+    gas_cost: float
+    net_saving: float
+    extra_time_minutes: int
+    value_score: int
+    is_best: bool = False
+    why: str
+
+
+class TollioBrainRecommendation(BaseModel):
+    natural_entry: str
+    better_entry: Optional[str] = None
+    natural_exit: str
+    better_exit: Optional[str] = None
+    toll_saved: float
+    gas_cost: float
+    net_saving: float
+    extra_time_minutes: int
+    value_score: int
+    why: str
+    annual_saving_projection: float
+
+
 class ValueScoreBreakdown(BaseModel):
     road_name: str
     road_short: str
@@ -180,6 +207,8 @@ class CommutePlanResponse(BaseModel):
     value_loss_reason: Optional[str] = None
     ntta_data_used: bool = False
     google_routes_data_used: bool = False
+    brain_recommendation: Optional[TollioBrainRecommendation] = None
+    brain_options: List[TollioBrainOption] = Field(default_factory=list)
 
 
 class TripSaveRequest(BaseModel):

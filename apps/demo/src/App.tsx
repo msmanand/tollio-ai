@@ -96,6 +96,33 @@ type ValueScoreBreakdown = {
   ntta_data_used: boolean;
 };
 
+type BrainRecommendation = {
+  natural_entry: string;
+  better_entry?: string | null;
+  natural_exit: string;
+  better_exit?: string | null;
+  toll_saved: number;
+  gas_cost: number;
+  net_saving: number;
+  extra_time_minutes: number;
+  value_score: number;
+  why: string;
+  annual_saving_projection: number;
+};
+
+type BrainOption = {
+  label: string;
+  total_price: number;
+  natural_total: number;
+  toll_saved: number;
+  gas_cost: number;
+  net_saving: number;
+  extra_time_minutes: number;
+  value_score: number;
+  is_best: boolean;
+  why: string;
+};
+
 type CommutePlanResponse = {
   recommended_route_summary: string;
   natural_route_cost: number;
@@ -122,13 +149,15 @@ type CommutePlanResponse = {
   value_loss_reason?: string;
   ntta_data_used?: boolean;
   google_routes_data_used?: boolean;
+  brain_recommendation?: BrainRecommendation | null;
+  brain_options?: BrainOption[];
 };
 
 type SegmentType = "toll" | "service_road" | "local_road";
 
-const friscoPreset: DemoForm = {
-  origin: "Frisco",
-  destination: "Downtown Dallas",
+const brainPreset: DemoForm = {
+  origin: "Royal Lane",
+  destination: "Trinity Mills Main Lane Gantry",
   arrival_time: "08:30",
   urgency_mode: "balanced",
   budget_period: "daily",
@@ -204,7 +233,7 @@ function skippedGantryText(plan: CommutePlanResponse) {
 }
 
 export function App() {
-  const [form, setForm] = useState<DemoForm>(friscoPreset);
+  const [form, setForm] = useState<DemoForm>(brainPreset);
   const [plan, setPlan] = useState<CommutePlanResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -295,8 +324,8 @@ export function App() {
           <p className="eyebrow">Tollio AI local demo</p>
           <h1>Budget-aware toll routing dashboard</h1>
         </div>
-        <button className="preset-button" type="button" onClick={() => setForm(friscoPreset)}>
-          Frisco to Downtown Dallas under $8
+        <button className="preset-button" type="button" onClick={() => setForm(brainPreset)}>
+          Royal to Trinity Mills under $8
         </button>
       </section>
 
@@ -428,10 +457,7 @@ export function App() {
                   label="Value Toll Minutes"
                   value={`${plan.toll_minutes_used ?? routeStats?.tollMinutes ?? 0}`}
                 />
-                <Metric
-                  label="Route Value"
-                  value={`${Math.round((plan.route_value_score ?? 0) * 100)}%`}
-                />
+                <Metric label="Value Score" value={`${plan.brain_recommendation?.value_score ?? plan.combined_value_score ?? 0}%`} />
                 <Metric label="Local-Road Minutes" value={`${routeStats?.localRoadMinutes ?? 0}`} />
                 <Metric label="Natural Cost" value={currency(plan.natural_route_cost)} />
                 <Metric label="Optimized Cost" value={currency(plan.optimized_route_cost)} />
@@ -446,22 +472,31 @@ export function App() {
 
               <div className="message-strip">{plan.budget_summary?.dashboard_message}</div>
 
-              <RouteValuePanel plan={plan} />
-
-              <RouteIntelligenceMap plan={plan} />
+              {plan.brain_recommendation ? (
+                <>
+                  <BrainRecommendationPanel recommendation={plan.brain_recommendation} />
+                  <BrainComparison options={plan.brain_options ?? []} />
+                </>
+              ) : (
+                <>
+                  <RouteValuePanel plan={plan} />
+                  <RouteIntelligenceMap plan={plan} />
+                </>
+              )}
 
               <section className="why-panel">
                 <div>
                   <p className="eyebrow">Why this saves money</p>
-                  <h3>{skippedGantryText(plan)}</h3>
-                  <p>
-                    The optimized route spends {currency(plan.optimized_route_cost)} instead of{" "}
-                    {currency(plan.natural_route_cost)}, saving {currency(plan.estimated_savings)}
-                    while adding {plan.added_minutes} minutes. Strategy{" "}
-                    {titleCase(plan.recommended_strategy ?? "gantry value")} uses{" "}
-                    {plan.toll_minutes_used ?? routeStats?.tollMinutes ?? 0} useful toll minutes and{" "}
-                    {plan.service_road_minutes ?? routeStats?.serviceRoadMinutes ?? 0} service-road minutes.
-                  </p>
+                  <h3>{plan.brain_recommendation?.better_entry ?? plan.brain_recommendation?.better_exit ?? skippedGantryText(plan)}</h3>
+                  {plan.brain_recommendation ? (
+                    <p>{plan.brain_recommendation.why}</p>
+                  ) : (
+                    <p>
+                      The optimized route spends {currency(plan.optimized_route_cost)} instead of{" "}
+                      {currency(plan.natural_route_cost)}, saving {currency(plan.estimated_savings)}
+                      while adding {plan.added_minutes} minutes.
+                    </p>
+                  )}
                 </div>
                 <div className="why-metrics">
                   <span>{budgetStatus}</span>
@@ -533,6 +568,64 @@ export function App() {
         </section>
       </section>
     </main>
+  );
+}
+
+function BrainRecommendationPanel({ recommendation }: { recommendation: BrainRecommendation }) {
+  return (
+    <section className="brain-panel">
+      <div className="brain-grid">
+        <BrainFact label="Natural Entry" value={recommendation.natural_entry} />
+        <BrainFact label="Better Entry" value={recommendation.better_entry ?? "No better entry found"} />
+        <BrainFact label="Natural Exit" value={recommendation.natural_exit} />
+        <BrainFact label="Better Exit" value={recommendation.better_exit ?? "No better exit found"} />
+      </div>
+      <div className="brain-money">
+        <Metric label="Toll Saved" value={currency(recommendation.toll_saved)} />
+        <Metric label="Gas Cost" value={currency(recommendation.gas_cost)} />
+        <Metric label="Net Savings" value={currency(recommendation.net_saving)} />
+        <Metric label="Extra Time" value={`${recommendation.extra_time_minutes} min`} />
+        <Metric label="Value Score" value={`${recommendation.value_score}%`} />
+        <Metric label="Annual Projection" value={currency(recommendation.annual_saving_projection)} />
+      </div>
+      <p className="brain-why">{recommendation.why}</p>
+    </section>
+  );
+}
+
+function BrainFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="brain-fact">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function BrainComparison({ options }: { options: BrainOption[] }) {
+  if (!options.length) {
+    return null;
+  }
+  return (
+    <section className="brain-comparison">
+      {options.slice(0, 3).map((option) => (
+        <article className={`brain-card ${option.is_best ? "best" : ""}`} key={option.label}>
+          <div>
+            <p className="eyebrow">{option.is_best ? "Recommended" : "Comparison"}</p>
+            <h3>{option.label}</h3>
+          </div>
+          <div className="brain-card-metrics">
+            <span>Cost {currency(option.total_price)}</span>
+            <span>Saved {currency(option.toll_saved)}</span>
+            <span>Gas {currency(option.gas_cost)}</span>
+            <span>Net {currency(option.net_saving)}</span>
+            <span>{option.extra_time_minutes} min extra</span>
+            <span>{option.value_score}% value</span>
+          </div>
+          <p>{option.why}</p>
+        </article>
+      ))}
+    </section>
   );
 }
 
