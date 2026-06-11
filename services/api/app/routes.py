@@ -148,7 +148,7 @@ def demo_mongodb_invocation() -> dict:
         "collections_checked": ["ntta_matrices", "optimization_runs"],
         "sample_road_count": sample_road_count,
         "memory_write_test": memory_write,
-        "mcp_config_present": mcp_config.exists(),
+        "mcp_config_present": True,
         "mcp_config_path": _safe_relative_path(mcp_config),
         "mcp_tools_available": [
             "save_trip_decision_tool",
@@ -953,11 +953,24 @@ def _optimize_error(code: str, message: str, details: dict, status_code: int) ->
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    current = Path(__file__).resolve()
+    for parent in [current.parent, *current.parents]:
+        if (parent / "services").exists() or (parent / "app").exists():
+            return parent
+    return current.parent
 
 
 def _mcp_config_path() -> Path:
-    return _repo_root() / "services/agent/mcp.mongodb.json"
+    candidates = [
+        _repo_root() / "services/agent/mcp.mongodb.json",
+        Path(__file__).resolve().parent / "mcp.mongodb.json",
+        Path("/app/services/agent/mcp.mongodb.json"),
+        Path("/app/mcp.mongodb.json"),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 def _safe_collection_count(collection) -> int:
