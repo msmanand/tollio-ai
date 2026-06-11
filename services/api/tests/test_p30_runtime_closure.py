@@ -134,6 +134,7 @@ def test_demo_mongodb_invocation_endpoint_returns_expected_fields(monkeypatch):
         "mcp_tools_available",
         "last_memory_trace",
         "status",
+        "errors",
     }
     assert "ntta_matrices" in body["collections_checked"]
     assert "optimization_runs" in body["collections_checked"]

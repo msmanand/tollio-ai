@@ -22,7 +22,7 @@ from app.data.ntta_matrix import (
     runtime_data_source,
 )
 from app.data.ntta_rates import find_toll_points, toll_points, unknown_rate
-from app.persistence.mongodb_client import MongoDBConnectionError
+from app.persistence.mongodb_client import MongoDBConnectionError, get_database, should_use_mongodb, storage_mode
 from app.persistence.budget_repository import get_budget_repository
 from app.persistence.optimization_repository import save_optimization_run, write_memory_probe
 from app.persistence.trip_repository import get_trip_repository
@@ -103,29 +103,53 @@ def demo_gemini_invocation() -> dict:
 
 @router.get("/api/v1/demo/mongodb-invocation")
 def demo_mongodb_invocation() -> dict:
-    status = get_system_status()
-    source = matrix_data_source()
+    errors = []
+    mongodb_mode = storage_mode()
+    runtime_source = "mongodb" if should_use_mongodb() else "local_json"
+    seeded_matrix_count = 0
+    sample_road_count = 0
+    mongodb_connects = False
+
     try:
-        roads = road_options()
-    except MongoDBConnectionError:
-        roads = []
-    memory_write = write_memory_probe()
+        db = get_database()
+        if db is not None:
+            mongodb_connects = True
+            seeded_matrix_count = _safe_collection_count(db["ntta_matrices"])
+            sample_road_count = seeded_matrix_count
+    except Exception as exc:
+        errors.append(_safe_error("mongodb_connection", exc))
+
+    if not should_use_mongodb():
+        try:
+            sample_road_count = len(road_options())
+        except Exception as exc:
+            errors.append(_safe_error("local_matrix_sample", exc))
+
+    try:
+        memory_write = write_memory_probe()
+        if should_use_mongodb() and memory_write.get("status") != "success":
+            errors.append(_safe_error("memory_write_test", memory_write.get("error", "memory_write_failed")))
+    except Exception as exc:
+        memory_write = {"status": "failure", "data_source": runtime_source, "error": exc.__class__.__name__}
+        errors.append(_safe_error("memory_write_test", exc))
+
     mcp_config = _mcp_config_path()
-    mongodb_ready = status.mongodb_ready and source == "mongodb"
+    mongodb_ready = should_use_mongodb() and mongodb_connects
+    status_value = "success" if mongodb_ready and seeded_matrix_count > 0 and memory_write.get("status") == "success" else "degraded"
     return {
-        "mongodb_mode": status.mongodb_mode,
+        "mongodb_mode": mongodb_mode,
         "mongodb_ready": mongodb_ready,
-        "runtime_data_source": runtime_data_source() if source == "mongodb" else source,
-        "ntta_source": runtime_data_source() if source == "mongodb" else source,
+        "runtime_data_source": runtime_source if mongodb_ready else ("mongodb_unavailable" if should_use_mongodb() else "local_json"),
+        "ntta_source": runtime_source if mongodb_ready else ("mongodb_unavailable" if should_use_mongodb() else "local_json"),
         "ntta_matrix_collection": "ntta_matrices",
         "optimization_memory_collection": "optimization_runs",
-        "seeded_matrix_count": len(roads) if source == "mongodb" else 0,
-        "optimization_memory_enabled": status.mongodb_ready,
+        "seeded_matrix_count": seeded_matrix_count,
+        "optimization_memory_enabled": should_use_mongodb(),
         "collections_checked": ["ntta_matrices", "optimization_runs"],
-        "sample_road_count": len(roads),
+        "sample_road_count": sample_road_count,
         "memory_write_test": memory_write,
         "mcp_config_present": mcp_config.exists(),
-        "mcp_config_path": str(mcp_config.relative_to(_repo_root())),
+        "mcp_config_path": _safe_relative_path(mcp_config),
         "mcp_tools_available": [
             "save_trip_decision_tool",
             "get_budget_profile_tool",
@@ -133,11 +157,12 @@ def demo_mongodb_invocation() -> dict:
             "update_savings_summary_tool",
         ],
         "last_memory_trace": {
-            "tool_name": "write_memory_probe",
-            "action": "insert_demo_memory_probe",
+            "collection": "optimization_runs",
+            "action": "memory_write_test",
             "output": memory_write,
         },
-        "status": "mongodb_runtime_ready" if mongodb_ready else "local_json_or_mongodb_unavailable",
+        "status": status_value,
+        "errors": errors,
     }
 
 
@@ -933,6 +958,27 @@ def _repo_root() -> Path:
 
 def _mcp_config_path() -> Path:
     return _repo_root() / "services/agent/mcp.mongodb.json"
+
+
+def _safe_collection_count(collection) -> int:
+    if hasattr(collection, "count_documents"):
+        return int(collection.count_documents({}))
+    return len(list(collection.find({}, {"_id": 0})))
+
+
+def _safe_relative_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(_repo_root()))
+    except ValueError:
+        return str(path)
+
+
+def _safe_error(stage: str, error) -> dict:
+    if isinstance(error, str):
+        error_type = error
+    else:
+        error_type = error.__class__.__name__
+    return {"stage": stage, "error": error_type}
 
 
 def _brain_road_from_matrix(road):
