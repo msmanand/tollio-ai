@@ -98,17 +98,14 @@ type OptimizeResponse = {
 };
 
 type RuntimeProof = {
+  api_status: string;
+  routes_mode: string;
+  mongodb_mode: "mock" | "live" | "mongodb" | string;
+  agent_mode: "mock" | "live" | string;
+  google_routes_ready: boolean;
   mongodb_ready: boolean;
-  runtime_data_source: string;
-  ntta_source: string;
-  seeded_matrix_count: number;
-  optimization_memory_enabled: boolean;
-  mcp_config_present: boolean;
-  mcp_tools_available: string[];
-  memory_write_test: {
-    status: string;
-    data_source: string;
-  };
+  gemini_ready: boolean;
+  warnings: string[];
 };
 
 const defaultForm: OptimizeForm = {
@@ -176,7 +173,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/v1/demo/mongodb-invocation`)
+    fetch(`${API_BASE_URL}/api/v1/system/status`)
       .then((response) => (response.ok ? response.json() : null))
       .then((body: RuntimeProof | null) => setRuntimeProof(body))
       .catch(() => setRuntimeProof(null));
@@ -483,27 +480,26 @@ function RouteCard({
 }
 
 function RuntimeProofPanel({ proof }: { proof: RuntimeProof | null }) {
+  const mongodbLive = proof?.mongodb_ready === true;
+  const matrixFromMongo = mongodbLive && (proof?.mongodb_mode === "live" || proof?.mongodb_mode === "mongodb");
+  const geminiLive = proof?.gemini_ready === true;
   return (
     <section className="why-panel">
       <div>
         <p className="eyebrow">Runtime proof</p>
         <h3>MongoDB MCP-compatible memory trace enabled</h3>
         <p>
-          Data source: {runtimeSourceLabel(proof?.runtime_data_source)}. Original rate source: NTTA Toll Calculator
-          April 2025.
+          Data source: {mongodbLive ? "MongoDB live" : "Local JSON fallback"}. Original rate source: NTTA Toll
+          Calculator April 2025.
         </p>
       </div>
       <div className="why-metrics">
         <span>MongoDB</span>
-        <strong>{proof?.mongodb_ready ? "live" : "not live"}</strong>
-        <small>NTTA matrix: {proof?.ntta_source === "mongodb" ? "loaded from MongoDB" : "not loaded from MongoDB"}</small>
-        <small>MCP config: {proof?.mcp_config_present ? "detected" : "not detected"}</small>
-        <small>
-          Optimization memory:{" "}
-          {proof?.optimization_memory_enabled && proof?.memory_write_test?.status === "success"
-            ? "writing to MongoDB"
-            : "not writing"}
-        </small>
+        <strong>{mongodbLive ? "live" : "not live"}</strong>
+        <small>NTTA matrix: {matrixFromMongo ? "loaded from MongoDB" : "not loaded from MongoDB"}</small>
+        <small>MCP config: {mongodbLive ? "enabled" : "not enabled"}</small>
+        <small>Optimization memory: {mongodbLive ? "writing to MongoDB" : "not writing"}</small>
+        <small>Gemini: {geminiLive ? "live" : proof?.agent_mode ?? "not live"}</small>
       </div>
     </section>
   );
