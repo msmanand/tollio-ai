@@ -241,7 +241,7 @@ export function App() {
     setIsLoading(true);
     setError(null);
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+    const timeoutId = window.setTimeout(() => controller.abort(), 60000);
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/optimize/entry-exit`, {
         method: "POST",
