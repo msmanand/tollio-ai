@@ -41,6 +41,16 @@ class PathSegment:
 
 
 @dataclass(frozen=True)
+class RoadConnection:
+    from_road: int
+    from_exit: int
+    to_road: int
+    to_entry: int
+    via_name: str
+    via: str
+
+
+@dataclass(frozen=True)
 class EntryOption:
     exit_idx: int
     exit_name: str
@@ -164,7 +174,46 @@ def getPrice(road: BrainRoad, a: int, b: int, payment: TollPayment = "tolltag") 
 def findPaths(fromRoad: int, fromExit: int, toRoad: int, toExit: int) -> List[List[PathSegment]]:
     if fromRoad == toRoad:
         return [[PathSegment(road=fromRoad, entry=fromExit, exit=toExit)]]
-    return []
+    paths = []
+    for connection in _connections():
+        if connection.from_road == fromRoad and connection.to_road == toRoad:
+            paths.append(
+                [
+                    PathSegment(
+                        road=fromRoad,
+                        entry=fromExit,
+                        exit=connection.from_exit,
+                        connector=connection.via_name,
+                        connector_type=connection.via,
+                    ),
+                    PathSegment(road=toRoad, entry=connection.to_entry, exit=toExit),
+                ]
+            )
+    for first in _connections():
+        if first.from_road != fromRoad:
+            continue
+        for second in _connections():
+            if second.from_road == first.to_road and second.to_road == toRoad:
+                paths.append(
+                    [
+                        PathSegment(
+                            road=fromRoad,
+                            entry=fromExit,
+                            exit=first.from_exit,
+                            connector=first.via_name,
+                            connector_type=first.via,
+                        ),
+                        PathSegment(
+                            road=first.to_road,
+                            entry=first.to_entry,
+                            exit=second.from_exit,
+                            connector=second.via_name,
+                            connector_type=second.via,
+                        ),
+                        PathSegment(road=toRoad, entry=second.to_entry, exit=toExit),
+                    ]
+                )
+    return paths
 
 
 def entryVScore(road: BrainRoad, entryIdx: int, destIdx: int, payment: TollPayment = "tolltag") -> int:
@@ -597,6 +646,33 @@ def _road_matches(road_short: str, road_name: str) -> bool:
     if road_short == "SH-121":
         return road_name == "Sam Rayburn Tollway"
     return False
+
+
+def _connections() -> List[RoadConnection]:
+    roads = matrix_brain_roads()
+    seeds = [
+        (0, "SRT", 2, "DNT", "SRT Interchange", "free"),
+        (2, "DNT", 0, "SRT", "SRT Interchange", "free"),
+        (0, "PGBT", 1, "DNT", "DNT/PGBT Interchange", "free"),
+        (1, "DNT", 0, "PGBT", "DNT/PGBT Interchange", "free"),
+    ]
+    connections = []
+    for from_road, from_name, to_road, to_name, via_name, via in seeds:
+        try:
+            from_exit = _find_exit_index(_road(from_road, roads), from_name)
+            to_entry = _find_exit_index(_road(to_road, roads), to_name)
+        except ValueError:
+            continue
+        connections.append(RoadConnection(from_road, from_exit, to_road, to_entry, via_name, via))
+    return connections
+
+
+def _find_exit_index(road: BrainRoad, name: str) -> int:
+    normalized = _normalize(name)
+    for index, exit_name in enumerate(road.exits):
+        if normalized in _normalize(exit_name):
+            return index
+    raise ValueError(f"Exit {name} not found on {road.short}")
 
 
 def matrix_brain_roads() -> List[BrainRoad]:

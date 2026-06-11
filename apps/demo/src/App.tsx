@@ -29,20 +29,29 @@ type OptimizeForm = {
 };
 
 type BrainOption = {
+  label: string;
   entry: string;
   exit: string;
+  toll_cost: number;
   toll_price: number;
+  natural_toll_cost: number;
   natural_price: number;
   toll_saved: number;
+  net_savings: number;
   service_road_minutes: number;
+  added_minutes: number;
   service_road_miles: number;
   gas_cost: number;
   net_saving: number;
+  value_score: number;
   entry_value_score: number;
   exit_value_score: number;
   combined_value_score: number;
   wasted_behind: number;
   unused_ahead: number;
+  confidence: string;
+  why: string;
+  explanation: string;
   recommendation_label: string;
   plain_english_reason: string;
 };
@@ -65,7 +74,9 @@ type Recommendation = {
 type OptimizeResponse = {
   natural_route: BrainOption;
   optimized_route: BrainOption;
+  best_recommendation: BrainOption;
   ranked_options: BrainOption[];
+  all_candidates: BrainOption[];
   explanation: string;
   recommendation: Recommendation;
   source_metadata: {
@@ -261,36 +272,24 @@ export function App() {
         <section className="results-panel">
           {result ? (
             <>
-              <section className="summary">
-                <p className="eyebrow">Recommended</p>
-                <h2>
-                  Enter at {result.recommendation.better_entry} instead of {result.recommendation.natural_entry}
-                </h2>
-                <p>
-                  Exit at {result.recommendation.better_exit} instead of {result.recommendation.natural_exit}.
-                  Save {currency(result.recommendation.net_saving)} net, add{" "}
-                  {result.recommendation.extra_time_minutes} minutes on service roads, and improve value score
-                  from {result.recommendation.natural_value_score}% to{" "}
-                  {result.recommendation.optimized_value_score}%.
-                </p>
-              </section>
+              <RecommendationSummary result={result} />
 
               <div className="metric-grid">
                 <Metric label="Natural Toll" value={currency(result.natural_route.toll_price)} />
-                <Metric label="Optimized Toll" value={currency(result.optimized_route.toll_price)} />
-                <Metric label="Toll Saved" value={currency(result.optimized_route.toll_saved)} />
-                <Metric label="Gas Cost" value={currency(result.optimized_route.gas_cost)} />
-                <Metric label="Net Saved" value={currency(result.optimized_route.net_saving)} />
-                <Metric label="Extra Time" value={`${result.optimized_route.service_road_minutes} min`} />
-                <Metric label="Entry Score" value={`${result.optimized_route.entry_value_score}%`} />
-                <Metric label="Exit Score" value={`${result.optimized_route.exit_value_score}%`} />
-                <Metric label="Combined Score" value={`${result.optimized_route.combined_value_score}%`} />
+                <Metric label="Recommended Toll" value={currency(result.best_recommendation.toll_price)} />
+                <Metric label="Toll Saved" value={currency(result.best_recommendation.toll_saved)} />
+                <Metric label="Gas Cost" value={currency(result.best_recommendation.gas_cost)} />
+                <Metric label="Net Saved" value={currency(result.best_recommendation.net_savings)} />
+                <Metric label="Extra Time" value={`${result.best_recommendation.added_minutes} min`} />
+                <Metric label="Entry Score" value={`${result.best_recommendation.entry_value_score}%`} />
+                <Metric label="Exit Score" value={`${result.best_recommendation.exit_value_score}%`} />
+                <Metric label="Confidence" value={result.best_recommendation.confidence} />
               </div>
 
               <section className="why-panel">
                 <div>
                   <p className="eyebrow">Why</p>
-                  <h3>{result.optimized_route.recommendation_label}</h3>
+                  <h3>{result.best_recommendation.label}</h3>
                   <p>{result.explanation}</p>
                 </div>
                 <div className="why-metrics">
@@ -301,23 +300,29 @@ export function App() {
               </section>
 
               <section className="brain-comparison">
-                <RouteCard title="Natural Route" option={result.natural_route} />
-                <RouteCard title="Optimized Route" option={result.optimized_route} isBest />
+                {result.all_candidates.map((option) => (
+                  <RouteCard
+                    title={option.label}
+                    option={option}
+                    isBest={option.label === result.best_recommendation.label}
+                    key={`${option.label}-${option.entry}-${option.exit}`}
+                  />
+                ))}
               </section>
 
               <ResultSection title="Ranked Alternatives">
-                {result.ranked_options.slice(0, 3).map((option) => (
+                {result.ranked_options.map((option) => (
                   <article className="list-card" key={`${option.recommendation_label}-${option.entry}-${option.exit}`}>
                     <div>
-                      <strong>{option.recommendation_label}</strong>
-                      <span>{option.combined_value_score}% value</span>
+                      <strong>{option.label}</strong>
+                      <span>{option.value_score}% value · {option.confidence}</span>
                     </div>
                     <p>
-                      {option.entry} to {option.exit}: {option.plain_english_reason}
+                      {option.entry} to {option.exit}: {option.explanation}
                     </p>
                     <small>
-                      Toll {currency(option.toll_price)} · net {currency(option.net_saving)} · service road{" "}
-                      {option.service_road_minutes} min / {option.service_road_miles} mi
+                      Toll {currency(option.toll_cost)} · saved {currency(option.toll_saved)} · net{" "}
+                      {currency(option.net_savings)} · extra time {option.added_minutes} min
                     </small>
                     <small>
                       Wasted behind: {option.wasted_behind} exits · unused ahead: {option.unused_ahead} exits
@@ -357,12 +362,43 @@ function RouteCard({
         {option.entry} to {option.exit}
       </p>
       <div className="brain-card-metrics">
-        <span>Toll {currency(option.toll_price)}</span>
-        <span>Net {currency(option.net_saving)}</span>
-        <span>Value {option.combined_value_score}%</span>
-        <span>Service road {option.service_road_minutes} min</span>
+        <span>Toll {currency(option.toll_cost)}</span>
+        <span>Saved {currency(option.toll_saved)}</span>
+        <span>Net {currency(option.net_savings)}</span>
+        <span>Extra time {option.added_minutes} min</span>
+        <span>Value {option.value_score}%</span>
+        <span>{option.confidence}</span>
       </div>
     </article>
+  );
+}
+
+function RecommendationSummary({ result }: { result: OptimizeResponse }) {
+  const best = result.best_recommendation;
+  const entryLine =
+    best.entry === result.natural_route.entry
+      ? `Enter at ${best.entry}`
+      : `Enter at ${best.entry} instead of ${result.natural_route.entry}`;
+  const exitLine =
+    best.exit === result.natural_route.exit
+      ? `Exit at ${best.exit}`
+      : `Exit at ${best.exit} instead of ${result.natural_route.exit}`;
+  const valueLine =
+    best.value_score > result.natural_route.value_score
+      ? `Value score improves from ${result.natural_route.value_score}% to ${best.value_score}%.`
+      : best.value_score < result.natural_route.value_score
+        ? `Value score changes from ${result.natural_route.value_score}% to ${best.value_score}%.`
+        : `Value score stays at ${best.value_score}%.`;
+
+  return (
+    <section className="summary">
+      <p className="eyebrow">Recommended</p>
+      <h2>{entryLine}</h2>
+      <p>
+        {exitLine}. Save {currency(best.net_savings)} net. Extra time: {best.added_minutes} min. {valueLine}
+      </p>
+      <p>{best.explanation}</p>
+    </section>
   );
 }
 

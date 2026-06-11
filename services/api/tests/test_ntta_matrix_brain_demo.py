@@ -129,8 +129,8 @@ def test_optimize_entry_exit_endpoint_returns_brain_shape():
     body = response.json()
     assert body["natural_route"]["toll_price"] == 1.38
     assert body["optimized_route"]["net_saving"] > 0
-    assert len(body["ranked_options"]) <= 3
-    assert "Entering at" in body["explanation"]
+    assert len(body["ranked_options"]) >= 3
+    assert body["explanation"]
 
 
 def test_matrix_json_contains_multiple_roads():

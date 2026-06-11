@@ -20,8 +20,11 @@ from app.services.tollio_brain import (
     BrainProfile,
     entryVScore,
     exitVScore,
-    optimize_trip_by_matrix_names,
+    getPrice,
+    getServiceRoadTime,
+    matrix_brain_roads,
     projectAnnualSaving,
+    serviceRoadGasCost,
     unusedAhead,
     vScore,
     wastedBehind,
@@ -140,23 +143,20 @@ def optimize_entry_exit(request: dict) -> dict:
         vehicle_type=str(request.get("vehicle_type", "gas")),
         traffic_mode=str(request.get("traffic_mode", "offpeak")),
     )
-    results = optimize_trip_by_matrix_names(matched_road.road_short, from_exit, to_exit, profile)
-    if not results:
-        raise HTTPException(status_code=404, detail="No matrix route found for selected road/exits")
-
-    best = results[0]
-    natural_route = _natural_option(matched_road, from_index, to_index, profile)
-    optimized_route = _brain_result_option(best, matched_road)
-    ranked_options = sorted(
-        [optimized_route, natural_route],
-        key=lambda item: (-item["combined_value_score"], item["toll_price"]),
-    )
-    recommendation = _recommendation(best, matched_road, profile.toll_payment)
+    all_candidates = _candidate_options(matched_road, from_index, to_index, profile, request)
+    if not all_candidates:
+        raise HTTPException(status_code=404, detail="No matrix candidates found for selected road/exits")
+    ranked_options = sorted(all_candidates, key=_candidate_sort_key)
+    natural_route = next(item for item in all_candidates if item["label"] == "Natural Route")
+    optimized_route = ranked_options[0]
+    recommendation = _recommendation_from_candidate(optimized_route, natural_route)
     return {
         "natural_route": natural_route,
         "optimized_route": optimized_route,
+        "best_recommendation": optimized_route,
         "ranked_options": ranked_options,
-        "explanation": recommendation["plain_english_reason"],
+        "all_candidates": all_candidates,
+        "explanation": optimized_route["explanation"],
         "recommendation": recommendation,
         "source_metadata": _source_metadata(matched_road),
     }
@@ -198,6 +198,308 @@ def budget_status() -> BudgetStatusResponse:
         status=budget.status,
         budget_summary=budget_result.dashboard_summary,
     )
+
+
+def _candidate_options(road, from_index: int, to_index: int, profile: BrainProfile, request: dict) -> list[dict]:
+    brain_road = _brain_road_from_matrix(road)
+    natural = _candidate_for_pair("Natural Route", road, brain_road, from_index, to_index, from_index, to_index, profile, request)
+    if natural is None:
+        return []
+
+    pool = []
+    for entry_index, exit_index in _candidate_pairs(from_index, to_index):
+        candidate = _candidate_for_pair("Candidate", road, brain_road, from_index, to_index, entry_index, exit_index, profile, request)
+        if candidate is None:
+            continue
+        if _reject_candidate(candidate):
+            continue
+        pool.append(candidate)
+
+    labeled = [natural]
+    non_natural = [candidate for candidate in pool if not _same_path(candidate, natural)]
+
+    best_value = _best_by(non_natural, key=_candidate_sort_key)
+    cheapest = _best_by(non_natural, key=lambda item: (item["toll_cost"], item["added_minutes"], -item["value_score"]))
+    budget_saver = _best_by(
+        [candidate for candidate in non_natural if candidate["net_savings"] > 0],
+        key=lambda item: (-item["net_savings"], item["added_minutes"], -item["value_score"]),
+    )
+    fastest = _best_by(pool, key=lambda item: (item["added_minutes"], -item["net_savings"], -item["value_score"]))
+
+    for label, candidate in [
+        ("Best Value Route", best_value),
+        ("Cheapest Route", cheapest),
+        ("Budget Saver Route", budget_saver),
+        ("Fastest Compatible Route", fastest),
+    ]:
+        if candidate is not None:
+            labeled.append(_with_label(candidate, label, natural))
+
+    unique = []
+    seen_labels = set()
+    for candidate in labeled:
+        if candidate["label"] in seen_labels:
+            continue
+        unique.append(candidate)
+        seen_labels.add(candidate["label"])
+    return unique
+
+
+def _candidate_for_pair(
+    label: str,
+    road,
+    brain_road,
+    natural_entry: int,
+    natural_exit: int,
+    entry_index: int,
+    exit_index: int,
+    profile: BrainProfile,
+    request: dict,
+):
+    price = getPrice(brain_road, entry_index, exit_index, profile.toll_payment)
+    natural_price = getPrice(brain_road, natural_entry, natural_exit, profile.toll_payment)
+    if price is None or natural_price is None:
+        return None
+
+    entry_detour = abs(entry_index - natural_entry)
+    exit_detour = abs(natural_exit - exit_index)
+    entry_service = getServiceRoadTime(entry_detour, profile.traffic_mode)
+    exit_service = getServiceRoadTime(exit_detour, profile.traffic_mode)
+    service_road_minutes = entry_service.minutes + exit_service.minutes
+    service_road_miles = round(entry_service.miles + exit_service.miles, 2)
+    gas_cost = serviceRoadGasCost(service_road_miles, profile.mpg, profile.gas_price, profile.vehicle_type)
+    toll_saved = round(natural_price - price, 2)
+    net_savings = round(toll_saved - gas_cost, 2)
+
+    entry_score = entryVScore(brain_road, entry_index, exit_index, profile.toll_payment)
+    exit_score = exitVScore(brain_road, entry_index, exit_index, profile.toll_payment)
+    value_score = min(entry_score, exit_score)
+    natural_entry_score = entryVScore(brain_road, natural_entry, natural_exit, profile.toll_payment)
+    natural_exit_score = exitVScore(brain_road, natural_entry, natural_exit, profile.toll_payment)
+    natural_value_score = min(natural_entry_score, natural_exit_score)
+    wasted = wastedBehind(brain_road, entry_index, exit_index, profile.toll_payment)
+    unused = unusedAhead(brain_road, entry_index, exit_index, profile.toll_payment)
+    natural_wasted = wastedBehind(brain_road, natural_entry, natural_exit, profile.toll_payment)
+    natural_unused = unusedAhead(brain_road, natural_entry, natural_exit, profile.toll_payment)
+    cost_per_minute_saved = None if service_road_minutes == 0 else round(toll_saved / service_road_minutes, 2)
+    budget_impact = _budget_impact(price, request)
+    confidence = _confidence(price, natural_price, net_savings, service_road_minutes)
+    metrics = {
+        "entry_value_score": entry_score,
+        "exit_value_score": exit_score,
+        "natural_entry_value_score": natural_entry_score,
+        "natural_exit_value_score": natural_exit_score,
+        "value_score": value_score,
+        "natural_value_score": natural_value_score,
+        "utilization_improvement": value_score - natural_value_score,
+        "wasted_behind": wasted,
+        "natural_wasted_behind": natural_wasted,
+        "unused_ahead": unused,
+        "natural_unused_ahead": natural_unused,
+        "cost_per_minute_saved": cost_per_minute_saved,
+        "budget_impact": budget_impact,
+        "driver_simplicity": _simplicity_score(entry_detour, exit_detour, service_road_minutes),
+        "confidence_rank": _confidence_rank(confidence),
+    }
+    explanation = _candidate_explanation(
+        road,
+        natural_entry,
+        natural_exit,
+        entry_index,
+        exit_index,
+        toll_saved,
+        net_savings,
+        gas_cost,
+        service_road_minutes,
+        metrics,
+    )
+    return {
+        "label": label,
+        "entry": road.exits[entry_index],
+        "exit": road.exits[exit_index],
+        "toll_cost": round(price, 2),
+        "toll_price": round(price, 2),
+        "natural_toll_cost": round(natural_price, 2),
+        "natural_price": round(natural_price, 2),
+        "toll_saved": toll_saved,
+        "net_savings": net_savings,
+        "net_saving": net_savings,
+        "added_minutes": service_road_minutes,
+        "service_road_minutes": service_road_minutes,
+        "service_road_miles": service_road_miles,
+        "gas_cost": gas_cost,
+        "value_score": value_score,
+        "entry_value_score": entry_score,
+        "exit_value_score": exit_score,
+        "combined_value_score": value_score,
+        "wasted_behind": wasted,
+        "unused_ahead": unused,
+        "confidence": confidence,
+        "why": explanation,
+        "explanation": explanation,
+        "recommendation_label": label,
+        "plain_english_reason": explanation,
+        "metrics": metrics,
+    }
+
+
+def _candidate_pairs(from_index: int, to_index: int) -> list[tuple[int, int]]:
+    direction = 1 if to_index >= from_index else -1
+    points = list(range(from_index, to_index + direction, direction))
+    pairs = []
+    for entry_position, entry_index in enumerate(points[:-1]):
+        for exit_index in points[entry_position + 1 :]:
+            pairs.append((entry_index, exit_index))
+    return pairs
+
+
+def _candidate_explanation(
+    road,
+    natural_entry: int,
+    natural_exit: int,
+    entry_index: int,
+    exit_index: int,
+    toll_saved: float,
+    net_savings: float,
+    gas_cost: float,
+    added_minutes: int,
+    metrics: dict,
+) -> str:
+    if entry_index == natural_entry and exit_index == natural_exit:
+        return "This is the natural route from the selected NTTA matrix entry and exit."
+
+    parts = []
+    attributed = False
+    if entry_index != natural_entry:
+        if (
+            metrics["wasted_behind"] < metrics["natural_wasted_behind"]
+            and metrics["entry_value_score"] > metrics["natural_entry_value_score"]
+        ):
+            parts.append(
+                f"Entering at {road.exits[entry_index]} instead of {road.exits[natural_entry]} improves entry utilization."
+            )
+            attributed = True
+        elif metrics["entry_value_score"] > metrics["natural_entry_value_score"]:
+            parts.append(f"Entering at {road.exits[entry_index]} improves the entry value score.")
+            attributed = True
+    if exit_index != natural_exit:
+        if (
+            metrics["unused_ahead"] < metrics["natural_unused_ahead"]
+            and metrics["exit_value_score"] > metrics["natural_exit_value_score"]
+        ):
+            parts.append(
+                f"Exiting at {road.exits[exit_index]} instead of {road.exits[natural_exit]} reduces unused paid distance ahead."
+            )
+            attributed = True
+        elif metrics["exit_value_score"] > metrics["natural_exit_value_score"]:
+            parts.append(f"Exiting at {road.exits[exit_index]} improves the exit value score.")
+            attributed = True
+    if toll_saved > 0 and not attributed:
+        parts.append(
+            "The matrix price is lower for this entry/exit combination, but the current utilization metrics do not attribute the savings to wasted-behind or unused-ahead segments."
+        )
+    if toll_saved > 0:
+        parts.append(
+            f"It saves ${toll_saved:.2f} in tolls, uses ${gas_cost:.2f} in gas, and nets ${net_savings:.2f} with {added_minutes} extra minutes."
+        )
+    if not parts:
+        parts.append("This option is valid, but it does not improve the current toll utilization or savings metrics.")
+    return " ".join(parts)
+
+
+def _reject_candidate(candidate: dict) -> bool:
+    return candidate["label"] != "Natural Route" and candidate["net_savings"] < 0.25 and candidate["added_minutes"] > 5
+
+
+def _candidate_sort_key(candidate: dict) -> tuple:
+    metrics = candidate["metrics"]
+    return (
+        -metrics["confidence_rank"],
+        -candidate["net_savings"],
+        -metrics["utilization_improvement"],
+        candidate["added_minutes"],
+        -_budget_score(metrics["budget_impact"]),
+        -metrics["driver_simplicity"],
+    )
+
+
+def _with_label(candidate: dict, label: str, natural: dict) -> dict:
+    relabeled = {**candidate, "label": label, "recommendation_label": label}
+    relabeled["explanation"] = _candidate_explanation_from_metrics(relabeled, natural)
+    relabeled["why"] = relabeled["explanation"]
+    relabeled["plain_english_reason"] = relabeled["explanation"]
+    return relabeled
+
+
+def _candidate_explanation_from_metrics(candidate: dict, natural: dict) -> str:
+    if candidate["entry"] == natural["entry"] and candidate["exit"] == natural["exit"]:
+        return "This is the fastest compatible option because it stays with the selected natural entry and exit."
+    return candidate["explanation"]
+
+
+def _best_by(candidates: list[dict], key):
+    if not candidates:
+        return None
+    return sorted(candidates, key=key)[0]
+
+
+def _same_path(left: dict, right: dict) -> bool:
+    return left["entry"] == right["entry"] and left["exit"] == right["exit"]
+
+
+def _confidence(price: float, natural_price: float, net_savings: float, added_minutes: int) -> str:
+    if price is None or natural_price is None:
+        return "unknown"
+    if net_savings >= 0.5 and added_minutes <= 6:
+        return "high"
+    if net_savings >= 0:
+        return "medium"
+    return "low"
+
+
+def _confidence_rank(confidence: str) -> int:
+    return {"high": 3, "medium": 2, "low": 1}.get(confidence, 0)
+
+
+def _budget_impact(toll_cost: float, request: dict) -> str:
+    budget = request.get("budget_amount") or request.get("daily_budget")
+    if budget is None:
+        return "unknown"
+    try:
+        budget_value = float(budget)
+    except (TypeError, ValueError):
+        return "unknown"
+    if toll_cost <= budget_value * 0.5:
+        return "comfortable"
+    if toll_cost <= budget_value:
+        return "within_budget"
+    return "over_budget"
+
+
+def _budget_score(impact: str) -> int:
+    return {"comfortable": 3, "within_budget": 2, "unknown": 1, "over_budget": 0}.get(impact, 0)
+
+
+def _simplicity_score(entry_detour: int, exit_detour: int, added_minutes: int) -> int:
+    changes = int(entry_detour > 0) + int(exit_detour > 0)
+    return max(0, 100 - changes * 15 - added_minutes * 4)
+
+
+def _recommendation_from_candidate(candidate: dict, natural: dict) -> dict:
+    return {
+        "natural_entry": natural["entry"],
+        "better_entry": candidate["entry"],
+        "natural_exit": natural["exit"],
+        "better_exit": candidate["exit"],
+        "toll_saved": candidate["toll_saved"],
+        "gas_cost": candidate["gas_cost"],
+        "net_saving": candidate["net_savings"],
+        "extra_time_minutes": candidate["added_minutes"],
+        "natural_value_score": natural["value_score"],
+        "optimized_value_score": candidate["value_score"],
+        "annual_saving_projection": projectAnnualSaving(candidate["net_savings"]),
+        "plain_english_reason": candidate["explanation"],
+    }
 
 
 def _natural_option(road, from_index: int, to_index: int, profile: BrainProfile) -> dict:
