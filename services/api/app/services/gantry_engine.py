@@ -22,6 +22,10 @@ class RouteChargeSummary(BaseModel):
     label: str
     amount: float
     reason: str
+    tolltag_rate: Optional[float] = None
+    zipcash_rate: Optional[float] = None
+    confidence: Optional[str] = None
+    source: Optional[str] = None
 
 
 class RouteValueCandidate(BaseModel):
@@ -686,6 +690,10 @@ def _route_candidate(
             label=segment.segment_label,
             amount=round(segment.estimated_cost, 2),
             reason=_avoided_charge_reason(segment, strategy),
+            tolltag_rate=segment.tolltag_rate,
+            zipcash_rate=segment.zipcash_rate,
+            confidence=segment.rate_confidence,
+            source=segment.rate_source,
         )
         for segment in avoided_segments
     ]
@@ -694,6 +702,10 @@ def _route_candidate(
             label=segment.segment_label,
             amount=round(segment.estimated_cost, 2),
             reason=_paid_charge_reason(segment),
+            tolltag_rate=segment.tolltag_rate,
+            zipcash_rate=segment.zipcash_rate,
+            confidence=segment.rate_confidence,
+            source=segment.rate_source,
         )
         for segment in paid_segments
     ]

@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 
 const API_BASE_URL = import.meta.env.VITE_TOLLIO_API_URL ?? "http://localhost:8000";
 
@@ -45,6 +45,10 @@ type RouteSegment = {
   estimated_minutes: number;
   estimated_cost: number;
   distance_miles: number;
+  tolltag_rate?: number | null;
+  zipcash_rate?: number | null;
+  rate_confidence?: string | null;
+  rate_source?: string | null;
 };
 
 type MapMarker = {
@@ -59,6 +63,20 @@ type RouteCharge = {
   label: string;
   amount: number;
   reason: string;
+  tolltag_rate?: number | null;
+  zipcash_rate?: number | null;
+  confidence?: string | null;
+  source?: string | null;
+};
+
+type NTTATollPoint = {
+  road_name: string;
+  toll_point_name: string;
+  toll_point_code: string;
+  vehicle_class: string;
+  tolltag_rate: number | null;
+  zipcash_rate: number | null;
+  confidence: string;
 };
 
 type ValueScoreBreakdown = {
@@ -141,6 +159,19 @@ function titleCase(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (letter: string) => letter.toUpperCase());
 }
 
+function rateText(rate: {
+  tolltag_rate?: number | null;
+  zipcash_rate?: number | null;
+  confidence?: string | null;
+  rate_confidence?: string | null;
+}) {
+  const confidence = rate.confidence ?? rate.rate_confidence ?? "unknown";
+  if (rate.tolltag_rate == null || rate.zipcash_rate == null) {
+    return `NTTA 2025-2027 official rate: unknown (${confidence})`;
+  }
+  return `NTTA 2025-2027 official rate: TollTag ${currency(rate.tolltag_rate)} · ZipCash ${currency(rate.zipcash_rate)} · ${confidence}`;
+}
+
 function minutesByType(plan: CommutePlanResponse, type: SegmentType) {
   return plan.route_segments
     .filter((segment) => segment.segment_type === type)
@@ -177,6 +208,14 @@ export function App() {
   const [plan, setPlan] = useState<CommutePlanResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tollPoints, setTollPoints] = useState<NTTATollPoint[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/v1/ntta/toll-points`)
+      .then((response) => (response.ok ? response.json() : []))
+      .then((body: NTTATollPoint[]) => setTollPoints(body))
+      .catch(() => setTollPoints([]));
+  }, []);
 
   const budgetStatus = useMemo(() => {
     if (!plan?.budget_summary) {
@@ -209,6 +248,11 @@ export function App() {
   function updateField<K extends keyof DemoForm>(key: K, value: DemoForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
   }
+
+  const tollPointOptions = useMemo(() => {
+    const options = tollPoints.map((point) => point.toll_point_name);
+    return Array.from(new Set([form.origin, form.destination, "Frisco", "Downtown Dallas", ...options]));
+  }, [form.destination, form.origin, tollPoints]);
 
   async function planCommute(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -261,17 +305,29 @@ export function App() {
           <div className="form-grid">
             <label>
               Origin
-              <input
+              <select
                 value={form.origin}
                 onChange={(event) => updateField("origin", event.target.value)}
-              />
+              >
+                {tollPointOptions.map((option) => (
+                  <option key={`origin-${option}`} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Destination
-              <input
+              <select
                 value={form.destination}
                 onChange={(event) => updateField("destination", event.target.value)}
-              />
+              >
+                {tollPointOptions.map((option) => (
+                  <option key={`destination-${option}`} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Arrival Time
@@ -444,6 +500,7 @@ export function App() {
                       {segment.estimated_minutes} min · {segment.distance_miles} mi ·{" "}
                       {currency(segment.estimated_cost)}
                     </small>
+                    <small>{rateText(segment)}</small>
                   </article>
                 ))}
               </ResultSection>
@@ -566,6 +623,7 @@ function ChargeColumn({
             <strong>{charge.label}</strong>
             <span>{currency(charge.amount)}</span>
             <p>{charge.reason}</p>
+            <small>{rateText(charge)}</small>
           </div>
         ))
       ) : (

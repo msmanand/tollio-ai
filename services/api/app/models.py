@@ -79,6 +79,10 @@ class RouteSegment(BaseModel):
     estimated_minutes: int
     estimated_cost: float
     distance_miles: float = 0.0
+    tolltag_rate: Optional[float] = None
+    zipcash_rate: Optional[float] = None
+    rate_confidence: Optional[str] = None
+    rate_source: Optional[str] = None
 
 
 class MapMarker(BaseModel):
@@ -102,6 +106,30 @@ class RouteCharge(BaseModel):
     label: str
     amount: float
     reason: str
+    tolltag_rate: Optional[float] = None
+    zipcash_rate: Optional[float] = None
+    confidence: Optional[str] = None
+    source: Optional[str] = None
+
+
+class NTTATollPoint(BaseModel):
+    road_name: str
+    toll_point_name: str
+    toll_point_code: str
+    vehicle_class: str
+    tolltag_rate: Optional[float]
+    zipcash_rate: Optional[float]
+    source_url: str
+    effective_start: str
+    effective_end: str
+    confidence: str
+
+
+class NTTARatesLookupResponse(BaseModel):
+    exact_route_pricing_available: bool
+    message: str
+    entry_matches: List[NTTATollPoint]
+    exit_matches: List[NTTATollPoint]
 
 
 class ValueScoreBreakdown(BaseModel):

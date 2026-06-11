@@ -4,10 +4,13 @@ from app.models import (
     BudgetStatusResponse,
     CommutePlanRequest,
     CommutePlanResponse,
+    NTTARatesLookupResponse,
+    NTTATollPoint,
     TripSaveRequest,
     TripSaveResponse,
     UrgencyMode,
 )
+from app.data.ntta_rates import find_toll_points, toll_points, unknown_rate
 from app.persistence.budget_repository import get_budget_repository
 from app.persistence.trip_repository import get_trip_repository
 from app.services.budget_engine import evaluate_budget
@@ -31,6 +34,29 @@ def system_status() -> SystemStatus:
 @router.post("/api/v1/commute/plan", response_model=CommutePlanResponse)
 def plan_commute(request: CommutePlanRequest) -> CommutePlanResponse:
     return build_commute_plan(request)
+
+
+@router.get("/api/v1/ntta/toll-points", response_model=list[NTTATollPoint])
+def ntta_toll_points(vehicle_class: str = "two_axle_passenger") -> list[NTTATollPoint]:
+    return [
+        NTTATollPoint(**entry.model_dump())
+        for entry in toll_points(vehicle_class)
+    ]
+
+
+@router.get("/api/v1/ntta/rates", response_model=NTTARatesLookupResponse)
+def ntta_rates(entry: str, exit: str, vehicle_class: str = "two_axle_passenger") -> NTTARatesLookupResponse:
+    entry_matches = find_toll_points(entry, vehicle_class) or [unknown_rate(entry, vehicle_class)]
+    exit_matches = find_toll_points(exit, vehicle_class) or [unknown_rate(exit, vehicle_class)]
+    return NTTARatesLookupResponse(
+        exact_route_pricing_available=False,
+        message=(
+            "Exact entry-to-exit route pricing is not computed from the PDF toll-point table. "
+            "Returning matched toll points and official rates only."
+        ),
+        entry_matches=[NTTATollPoint(**match.model_dump()) for match in entry_matches],
+        exit_matches=[NTTATollPoint(**match.model_dump()) for match in exit_matches],
+    )
 
 
 @router.post("/api/v1/trips/save", response_model=TripSaveResponse)

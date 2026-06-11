@@ -47,8 +47,8 @@ def test_commute_plan_returns_expected_fields():
     }
 
     assert expected_fields.issubset(body.keys())
-    assert body["optimized_route_cost"] == 6.25
-    assert body["estimated_savings"] == 4.5
+    assert body["optimized_route_cost"] == 4.13
+    assert body["estimated_savings"] == 0.34
     assert body["optimized_route_polyline"] == "placeholder_exit_legacy_reenter_north_dallas"
     assert any(
         decision["action"] == "exit_before_gantry"
@@ -84,6 +84,9 @@ def test_commute_plan_includes_route_segments_from_adapter():
     assert route_segments
     assert route_segments[0]["road_name"] == "Dallas North Tollway"
     assert "distance_miles" in route_segments[0]
+    assert route_segments[0]["tolltag_rate"] == 2.19
+    assert route_segments[0]["zipcash_rate"] == 4.38
+    assert route_segments[0]["rate_confidence"] == "exact"
 
 
 def test_commute_plan_includes_map_markers_from_adapter():

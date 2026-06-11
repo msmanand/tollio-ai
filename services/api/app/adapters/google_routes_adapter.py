@@ -1,10 +1,12 @@
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from pydantic import BaseModel
+
+from app.data.ntta_rates import get_toll_point_by_name
 
 
 class NormalizedRouteSegment(BaseModel):
@@ -16,6 +18,10 @@ class NormalizedRouteSegment(BaseModel):
     estimated_minutes: int
     estimated_cost: float
     distance_miles: float
+    tolltag_rate: Optional[float] = None
+    zipcash_rate: Optional[float] = None
+    rate_confidence: Optional[str] = None
+    rate_source: Optional[str] = None
 
 
 class NormalizedMapMarker(BaseModel):
@@ -73,46 +79,50 @@ def _get_mock_route_options(origin: str, destination: str) -> List[NormalizedRou
     if origin.strip().lower() == "frisco" and destination.strip().lower() == "downtown dallas":
         natural_segments = [
             {
-                "segment_label": "Segment A",
+                "segment_label": "Eldorado Main Lane Gantry",
                 "road_name": "Dallas North Tollway",
                 "start_location": "Frisco",
                 "end_location": "Legacy Drive",
                 "segment_type": "toll",
                 "estimated_minutes": 18,
-                "estimated_cost": 4.25,
+                "estimated_cost": _official_tolltag_rate("Eldorado Main Lane Gantry"),
                 "distance_miles": 13.2,
+                **_rate_metadata("Eldorado Main Lane Gantry"),
             },
             {
-                "segment_label": "Segment B",
+                "segment_label": "Legacy Drive",
                 "road_name": "Dallas North Tollway",
                 "start_location": "Legacy Drive",
                 "end_location": "North Dallas",
                 "segment_type": "toll",
                 "estimated_minutes": 7,
-                "estimated_cost": 4.50,
+                "estimated_cost": _official_tolltag_rate("Legacy Drive"),
                 "distance_miles": 5.8,
+                **_rate_metadata("Legacy Drive"),
             },
             {
-                "segment_label": "Segment C",
+                "segment_label": "Wycliff Main Lane Gantry",
                 "road_name": "Dallas North Tollway",
                 "start_location": "North Dallas",
                 "end_location": "Downtown Dallas",
                 "segment_type": "toll",
                 "estimated_minutes": 16,
-                "estimated_cost": 2.00,
+                "estimated_cost": _official_tolltag_rate("Wycliff Main Lane Gantry"),
                 "distance_miles": 10.4,
+                **_rate_metadata("Wycliff Main Lane Gantry"),
             },
         ]
         optimized_segments = [
             {
-                "segment_label": "Segment A",
+                "segment_label": "Eldorado Main Lane Gantry",
                 "road_name": "Dallas North Tollway",
                 "start_location": "Frisco",
                 "end_location": "Legacy Drive",
                 "segment_type": "toll",
                 "estimated_minutes": 18,
-                "estimated_cost": 4.25,
+                "estimated_cost": _official_tolltag_rate("Eldorado Main Lane Gantry"),
                 "distance_miles": 13.2,
+                **_rate_metadata("Eldorado Main Lane Gantry"),
             },
             {
                 "segment_label": "Segment B",
@@ -125,14 +135,15 @@ def _get_mock_route_options(origin: str, destination: str) -> List[NormalizedRou
                 "distance_miles": 4.7,
             },
             {
-                "segment_label": "Segment C",
+                "segment_label": "Wycliff Main Lane Gantry",
                 "road_name": "Dallas North Tollway",
                 "start_location": "North Dallas Reentry",
                 "end_location": "Downtown Dallas",
                 "segment_type": "toll",
                 "estimated_minutes": 20,
-                "estimated_cost": 2.0,
+                "estimated_cost": _official_tolltag_rate("Wycliff Main Lane Gantry"),
                 "distance_miles": 10.4,
+                **_rate_metadata("Wycliff Main Lane Gantry"),
             },
         ]
         markers = [
@@ -178,7 +189,7 @@ def _get_mock_route_options(origin: str, destination: str) -> List[NormalizedRou
                 route_label="Full Dallas North Tollway route",
                 total_minutes=41,
                 total_distance_miles=29.4,
-                estimated_toll_cost=10.75,
+                estimated_toll_cost=_segments_cost(natural_segments),
                 polyline="placeholder_natural_dnt_full_toll_route",
                 segments=natural_segments,
                 map_markers=markers,
@@ -188,7 +199,7 @@ def _get_mock_route_options(origin: str, destination: str) -> List[NormalizedRou
                 route_label="Gantry-aware optimized route",
                 total_minutes=46,
                 total_distance_miles=28.3,
-                estimated_toll_cost=6.25,
+                estimated_toll_cost=_segments_cost(optimized_segments),
                 polyline="placeholder_exit_legacy_reenter_north_dallas",
                 segments=optimized_segments,
                 map_markers=markers,
@@ -256,6 +267,32 @@ def _route_option(
         map_markers=[NormalizedMapMarker(**marker) for marker in map_markers],
         data_source="mock_google_routes_adapter",
     )
+
+
+def _official_tolltag_rate(toll_point_name: str) -> float:
+    rate = get_toll_point_by_name(toll_point_name)
+    return rate.tolltag_rate if rate and rate.tolltag_rate is not None else 0.0
+
+
+def _segments_cost(segments: List[Dict[str, Any]]) -> float:
+    return round(sum(segment.get("estimated_cost", 0.0) for segment in segments), 2)
+
+
+def _rate_metadata(toll_point_name: str) -> Dict[str, Any]:
+    rate = get_toll_point_by_name(toll_point_name)
+    if rate is None:
+        return {
+            "tolltag_rate": None,
+            "zipcash_rate": None,
+            "rate_confidence": "unknown",
+            "rate_source": None,
+        }
+    return {
+        "tolltag_rate": rate.tolltag_rate,
+        "zipcash_rate": rate.zipcash_rate,
+        "rate_confidence": rate.confidence,
+        "rate_source": rate.source_url,
+    }
 
 
 def _get_live_route_options(

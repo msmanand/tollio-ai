@@ -259,6 +259,10 @@ def _to_route_segments(route: NormalizedRouteOption) -> list[RouteSegment]:
             estimated_minutes=segment.estimated_minutes,
             estimated_cost=segment.estimated_cost,
             distance_miles=segment.distance_miles,
+            tolltag_rate=segment.tolltag_rate,
+            zipcash_rate=segment.zipcash_rate,
+            rate_confidence=segment.rate_confidence,
+            rate_source=segment.rate_source,
         )
         for segment in route.segments
     ]
@@ -283,6 +287,10 @@ def _to_route_charges(charges: list[RouteChargeSummary]) -> list[RouteCharge]:
             label=charge.label,
             amount=charge.amount,
             reason=charge.reason,
+            tolltag_rate=charge.tolltag_rate,
+            zipcash_rate=charge.zipcash_rate,
+            confidence=charge.confidence,
+            source=charge.source,
         )
         for charge in charges
     ]
