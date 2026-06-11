@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "mongodb": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mongodb-mcp-server"
+      ],
+      "env": {
+        "MDB_MCP_CONNECTION_STRING": "${MONGODB_URI}",
+        "MDB_MCP_DATABASE": "${MONGODB_DATABASE:-tollio_ai}"
+      }
+    }
+  },
+  "notes": [
+    "Placeholder-safe MCP config for MongoDB partner-track judging.",
+    "Do not commit a real MongoDB URI.",
+    "Current runtime uses services/agent/app/tools/mongodb_memory_tool.py as the adapter boundary unless official MCP is installed and configured."
+  ]
+}

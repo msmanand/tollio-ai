@@ -16,6 +16,7 @@ from app.persistence.budget_repository import get_budget_repository
 from app.persistence.trip_repository import get_trip_repository
 from app.services.budget_engine import evaluate_budget
 from app.services.commute_planner import build_commute_plan
+from app.services.explanation_service import generate_explanation
 from app.services.tollio_brain import (
     BrainProfile,
     PathSegment,
@@ -45,6 +46,42 @@ def health() -> dict:
 @router.get("/api/v1/system/status", response_model=SystemStatus)
 def system_status() -> SystemStatus:
     return get_system_status()
+
+
+@router.get("/api/v1/demo/gemini-invocation")
+def demo_gemini_invocation() -> dict:
+    status = get_system_status()
+    sample_plan = build_commute_plan(
+        CommutePlanRequest(
+            origin="Frisco",
+            destination="Downtown Dallas",
+            arrival_time="08:30",
+            urgency_mode=UrgencyMode.balanced,
+            daily_budget=8,
+            weekly_budget=40,
+            monthly_budget=160,
+            budget_period=BudgetPeriod.daily,
+            toll_pass_type="NTTA TollTag",
+            vehicle_mpg=28,
+            gas_price=3.25,
+            avoid_excessive_signals=True,
+        )
+    )
+    explanation = generate_explanation(sample_plan)
+    return {
+        "endpoint": "/api/v1/demo/gemini-invocation",
+        "gemini_ready": status.gemini_ready,
+        "agent_mode": status.agent_mode,
+        "gemini_invoked": explanation.data_source == "live_gemini",
+        "explanation_data_source": explanation.data_source,
+        "safety_note": (
+            "Live Gemini is called only when TOLLIO_AGENT_MODE=live and GEMINI_API_KEY is set. "
+            "Mock explanation mode remains the default."
+        ),
+        "short_explanation": explanation.short_explanation,
+        "driver_friendly_summary": explanation.driver_friendly_summary,
+        "caution_notes": explanation.caution_notes,
+    }
 
 
 @router.post("/api/v1/commute/plan", response_model=CommutePlanResponse)

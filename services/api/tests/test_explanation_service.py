@@ -107,3 +107,86 @@ def test_gemini_prompt_keeps_deterministic_decisions_as_source_of_truth():
     assert "Do not change toll decisions." in prompt
     assert "Do not invent route data." in prompt
     assert "Explain only the provided deterministic route/gantry/budget output." in prompt
+
+
+def test_live_mode_with_key_invokes_gemini_runtime_path(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self):
+            return (
+                b'{"candidates":[{"content":{"parts":[{"text":"'
+                b'{\\"short_explanation\\":\\"live short\\",'
+                b'\\"detailed_explanation\\":\\"live detailed\\",'
+                b'\\"driver_friendly_summary\\":\\"live summary\\",'
+                b'\\"caution_notes\\":[\\"do not change decisions\\"]}'
+                b'"}]}}]}'
+            )
+
+    def fake_urlopen(req, timeout):
+        calls.append((req.full_url, timeout))
+        return FakeResponse()
+
+    monkeypatch.setenv("TOLLIO_AGENT_MODE", "live")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only-key")
+    monkeypatch.setattr("app.services.explanation_service.urllib_request.urlopen", fake_urlopen)
+
+    explanation = generate_explanation(build_commute_plan(_sample_request()))
+
+    assert explanation.data_source == "live_gemini"
+    assert explanation.short_explanation == "live short"
+    assert calls
+    assert "generativelanguage.googleapis.com" in calls[0][0]
+
+
+def test_demo_gemini_invocation_endpoint_is_safe_without_credentials(monkeypatch):
+    monkeypatch.setenv("TOLLIO_AGENT_MODE", "mock")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    response = client.get("/api/v1/demo/gemini-invocation")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["gemini_ready"] is False
+    assert body["gemini_invoked"] is False
+    assert body["explanation_data_source"] == "mock_explanation_service"
+
+
+def test_demo_gemini_invocation_endpoint_uses_live_path_when_gated(monkeypatch):
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self):
+            return (
+                b'{"candidates":[{"content":{"parts":[{"text":"'
+                b'{\\"short_explanation\\":\\"endpoint live\\",'
+                b'\\"detailed_explanation\\":\\"endpoint detailed\\",'
+                b'\\"driver_friendly_summary\\":\\"endpoint summary\\",'
+                b'\\"caution_notes\\":[]}'
+                b'"}]}}]}'
+            )
+
+    monkeypatch.setenv("TOLLIO_AGENT_MODE", "live")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only-key")
+    monkeypatch.setattr(
+        "app.services.explanation_service.urllib_request.urlopen",
+        lambda req, timeout: FakeResponse(),
+    )
+
+    response = client.get("/api/v1/demo/gemini-invocation")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["gemini_ready"] is True
+    assert body["gemini_invoked"] is True
+    assert body["explanation_data_source"] == "live_gemini"

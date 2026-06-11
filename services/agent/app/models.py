@@ -89,3 +89,4 @@ class AgentResponse(BaseModel):
     saved_trip_id: str
     confidence_level: str
     data_sources_used: List[str]
+    memory_trace: List[str] = Field(default_factory=list)

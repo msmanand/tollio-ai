@@ -40,9 +40,11 @@ def test_agent_returns_required_structured_fields(monkeypatch):
         "saved_trip_id",
         "confidence_level",
         "data_sources_used",
+        "memory_trace",
     }.issubset(body.keys())
-    assert response.data_sources_used == ["mock_tools"]
+    assert response.data_sources_used == ["mock_tools", "mock_mongodb_memory_tool"]
     assert response.saved_trip_id.startswith("mock-trip-")
+    assert any(item.startswith("save_trip_decision_tool:") for item in response.memory_trace)
 
 
 def test_agent_output_includes_gantry_intelligence():

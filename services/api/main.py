@@ -1,3 +1,5 @@
+import os
+
 from app.routes import router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +16,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-    ],
+    ] + [origin.strip() for origin in os.getenv("TOLLIO_CORS_ORIGINS", "").split(",") if origin.strip()],
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],

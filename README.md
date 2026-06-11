@@ -43,21 +43,105 @@ Tollio uses Google Routes for route geometry/ETA readiness and NTTA static toll-
 
 ## Hackathon Demo
 
-- Demo story: `docs/demo/demo-story.md`
-- Demo verification: `docs/demo/demo-verification.md`
-- Final audit report: `docs/demo/final-audit-report.md`
-
-Mock mode is the safe default. The deterministic Gantry Intelligence Engine is the core working logic on `main`.
-
-## Hackathon Demo
-
 Demo materials:
 
 - [Hackathon demo script](docs/demo/hackathon-demo-script.md)
 - [Submission summary](docs/demo/submission-summary.md)
 - [Demo verification](docs/demo/demo-verification.md)
+- [Final audit report](docs/demo/final-audit-report.md)
 
-Mock mode is the default for safe judging and local demos. Google Routes, MongoDB, and Gemini are live-gated/readiness-enabled, and the deterministic Gantry Intelligence Engine is the core working logic.
+Mock mode is the default for safe judging and local demos. The working demo uses NTTA matrix data, deterministic toll intelligence, and route-value options. Google Routes, MongoDB, and Gemini are live-gated/readiness-enabled.
+
+## Hackathon Compliance
+
+### Gemini Runtime Usage
+
+Gemini is used as an explanation layer only. Tollio's deterministic toll decisions remain the source of truth; Gemini is instructed not to change toll decisions or invent route data.
+
+Runtime behavior:
+
+- Default: `TOLLIO_AGENT_MODE=mock`, no Gemini call.
+- Live: `TOLLIO_AGENT_MODE=live` and `GEMINI_API_KEY` set, `services/api/app/services/explanation_service.py` calls Gemini through the Google Generative Language API.
+- Safe judge endpoint: `GET /api/v1/demo/gemini-invocation`.
+
+Verify locally without credentials:
+
+```sh
+curl http://localhost:8000/api/v1/demo/gemini-invocation
+```
+
+Verify live path after setting credentials:
+
+```sh
+export TOLLIO_AGENT_MODE=live
+export GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+curl http://localhost:8000/api/v1/demo/gemini-invocation
+```
+
+The response includes `gemini_ready`, `gemini_invoked`, and `explanation_data_source`.
+
+### Google Cloud Agent Builder-Compatible Agent Flow
+
+The agent service in `services/agent` is structured as an Agent Builder/ADK-compatible tool flow:
+
+1. `route_options_tool`
+2. `toll_estimate_tool`
+3. `gantry_intelligence_tool`
+4. `budget_status_tool`
+5. MongoDB memory tool boundary
+6. final driver explanation
+
+Run the deterministic agent:
+
+```sh
+cd services/agent
+source .venv/bin/activate
+TOLLIO_AGENT_MODE=mock python main.py
+```
+
+### MongoDB MCP Partner Track Usage
+
+Tollio includes a MongoDB memory/tool layer for trip memory, budget profile, recent commutes, and savings summaries.
+
+- Runtime adapter: `services/agent/app/tools/mongodb_memory_tool.py`
+- Agent call path: `services/agent/app/agent.py` calls the MongoDB memory tool during normal agent execution.
+- MCP config artifact: `services/agent/mcp.mongodb.json`
+
+Current status: MCP-ready and mock-safe by default. Do not claim live MCP unless the official MongoDB MCP server is installed and `MONGODB_URI` is configured.
+
+### Hosted Deployment Instructions
+
+API on Cloud Run using the included Dockerfile:
+
+```sh
+gcloud run deploy tollio-api \
+  --source services/api \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars TOLLIO_AGENT_MODE=mock,TOLLIO_STORAGE_MODE=mock,TOLLIO_CORS_ORIGINS=https://YOUR_VERCEL_APP.vercel.app
+```
+
+API on Render:
+
+1. Create a new Web Service from this repository.
+2. Root directory: `services/api`.
+3. Runtime: Docker.
+4. Environment variables: `TOLLIO_AGENT_MODE=mock`, `TOLLIO_STORAGE_MODE=mock`, `TOLLIO_CORS_ORIGINS=https://YOUR_VERCEL_APP.vercel.app`.
+
+Demo dashboard on Vercel:
+
+1. Import this repository.
+2. Root directory: `apps/demo`.
+3. Build command: `npm run build`.
+4. Output directory: `dist`.
+5. Set `VITE_TOLLIO_API_URL=https://YOUR_API_HOST`.
+
+Local smoke test before hosting:
+
+```sh
+cd services/api && source .venv/bin/activate && pytest
+cd ../../apps/demo && source /Users/tsp00/.nvm/nvm.sh && nvm use 22 && npm run build
+```
 
 ## Local Demo Dashboard
 
