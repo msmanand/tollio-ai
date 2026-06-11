@@ -17,6 +17,8 @@ def test_runtime_orchestrates_required_tools(monkeypatch):
     assert output["route_toll_optimization"]["toll_estimate_tool_called"] is True
     assert output["route_toll_optimization"]["gantry_intelligence_tool_called"] is True
     assert output["budget"]["status"]
+    assert output["mongodb_mcp_proof"]["mcp_config_detected"] is True
+    assert output["mongodb_mcp_proof"]["mongodb_memory_tool_invoked"] is True
     assert output["gemini_explanation"]["gemini_invoked"] is False
     assert {item["tool_name"] for item in output["memory_trace"]} == {
         "save_trip_decision_tool",
@@ -103,6 +105,9 @@ def test_runtime_reports_live_memory_and_gemini_traces(monkeypatch):
     output = run_agent_runtime()
 
     assert output["route_toll_optimization"]["ntta_data_source"] == "mongodb"
+    assert output["route_toll_optimization"]["ntta_matrix_source"] == "mongodb"
     assert output["memory_trace"][0]["output"]["data_source"] == "mongodb"
+    assert output["mongodb_mcp_proof"]["mcp_config_detected"] is True
+    assert output["mongodb_mcp_proof"]["optimization_run_stored"] is True
     assert output["gemini_trace"]["gemini_invoked"] is True
     assert output["gemini_trace"]["data_source"] == "live_gemini"

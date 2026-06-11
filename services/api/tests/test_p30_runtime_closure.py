@@ -121,9 +121,18 @@ def test_demo_mongodb_invocation_endpoint_returns_expected_fields(monkeypatch):
         "mongodb_mode",
         "mongodb_ready",
         "ntta_source",
+        "runtime_data_source",
+        "ntta_matrix_collection",
+        "optimization_memory_collection",
+        "seeded_matrix_count",
+        "optimization_memory_enabled",
         "collections_checked",
         "sample_road_count",
         "memory_write_test",
+        "mcp_config_present",
+        "mcp_config_path",
+        "mcp_tools_available",
+        "last_memory_trace",
         "status",
     }
     assert "ntta_matrices" in body["collections_checked"]

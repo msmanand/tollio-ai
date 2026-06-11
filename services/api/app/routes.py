@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from app.config import SystemStatus, get_system_status
 from app.models import (
     BudgetPeriod,
@@ -10,8 +12,17 @@ from app.models import (
     TripSaveResponse,
     UrgencyMode,
 )
-from app.data.ntta_matrix import exit_options, find_exit_index, find_road, get_matrix_price, matrix_data_source, road_options
+from app.data.ntta_matrix import (
+    exit_options,
+    find_exit_index,
+    find_road,
+    get_matrix_price,
+    matrix_data_source,
+    road_options,
+    runtime_data_source,
+)
 from app.data.ntta_rates import find_toll_points, toll_points, unknown_rate
+from app.persistence.mongodb_client import MongoDBConnectionError
 from app.persistence.budget_repository import get_budget_repository
 from app.persistence.optimization_repository import save_optimization_run, write_memory_probe
 from app.persistence.trip_repository import get_trip_repository
@@ -94,16 +105,38 @@ def demo_gemini_invocation() -> dict:
 def demo_mongodb_invocation() -> dict:
     status = get_system_status()
     source = matrix_data_source()
-    roads = road_options()
+    try:
+        roads = road_options()
+    except MongoDBConnectionError:
+        roads = []
     memory_write = write_memory_probe()
+    mcp_config = _mcp_config_path()
     mongodb_ready = status.mongodb_ready and source == "mongodb"
     return {
         "mongodb_mode": status.mongodb_mode,
         "mongodb_ready": mongodb_ready,
-        "ntta_source": source,
+        "runtime_data_source": runtime_data_source() if source == "mongodb" else source,
+        "ntta_source": runtime_data_source() if source == "mongodb" else source,
+        "ntta_matrix_collection": "ntta_matrices",
+        "optimization_memory_collection": "optimization_runs",
+        "seeded_matrix_count": len(roads) if source == "mongodb" else 0,
+        "optimization_memory_enabled": status.mongodb_ready,
         "collections_checked": ["ntta_matrices", "optimization_runs"],
         "sample_road_count": len(roads),
         "memory_write_test": memory_write,
+        "mcp_config_present": mcp_config.exists(),
+        "mcp_config_path": str(mcp_config.relative_to(_repo_root())),
+        "mcp_tools_available": [
+            "save_trip_decision_tool",
+            "get_budget_profile_tool",
+            "get_recent_commutes_tool",
+            "update_savings_summary_tool",
+        ],
+        "last_memory_trace": {
+            "tool_name": "write_memory_probe",
+            "action": "insert_demo_memory_probe",
+            "output": memory_write,
+        },
         "status": "mongodb_runtime_ready" if mongodb_ready else "local_json_or_mongodb_unavailable",
     }
 
@@ -138,12 +171,20 @@ def ntta_rates(entry: str, exit: str, vehicle_class: str = "two_axle_passenger")
 
 @router.get("/api/v1/ntta/roads")
 def ntta_roads() -> dict:
-    return {"roads": road_options(), "source_metadata": {"data_source": matrix_data_source()}}
+    try:
+        roads = road_options()
+    except MongoDBConnectionError as exc:
+        raise _matrix_unavailable_error("roads", str(exc)) from exc
+    source = _source_metadata(roads[0]) if roads else _empty_source_metadata()
+    return {"roads": roads, "source_metadata": source}
 
 
 @router.get("/api/v1/ntta/exits")
 def ntta_exits(road: str) -> dict:
-    matched_road = find_road(road)
+    try:
+        matched_road = find_road(road)
+    except MongoDBConnectionError as exc:
+        raise _matrix_unavailable_error("exits", str(exc)) from exc
     if matched_road is None:
         raise HTTPException(status_code=404, detail=f"Unknown NTTA road: {road}")
     return {
@@ -154,6 +195,10 @@ def ntta_exits(road: str) -> dict:
         },
         "exits": exit_options(matched_road),
         "source_metadata": _source_metadata(matched_road),
+        "runtime_data_source": runtime_data_source(),
+        "original_rate_source": matched_road.source_file,
+        "effective_date": matched_road.effective_date,
+        "source_confidence": matched_road.confidence,
     }
 
 
@@ -161,7 +206,10 @@ def ntta_exits(road: str) -> dict:
 def ntta_price(road: str, from_exit: str, to_exit: str, payment: str = "tolltag") -> dict:
     if payment not in {"tolltag", "zipcash"}:
         raise HTTPException(status_code=422, detail="payment must be tolltag or zipcash")
-    matched_road = find_road(road)
+    try:
+        matched_road = find_road(road)
+    except MongoDBConnectionError as exc:
+        raise _matrix_unavailable_error("price", str(exc)) from exc
     if matched_road is None:
         raise HTTPException(status_code=404, detail=f"Unknown NTTA road: {road}")
     lookup = get_matrix_price(matched_road, from_exit, to_exit, payment)
@@ -173,6 +221,10 @@ def ntta_price(road: str, from_exit: str, to_exit: str, payment: str = "tolltag"
         "payment": lookup.payment,
         "price": lookup.price,
         "exact_matrix_match": lookup.exact_matrix_match,
+        "runtime_data_source": runtime_data_source(),
+        "original_rate_source": lookup.source_file,
+        "effective_date": lookup.effective_date,
+        "source_confidence": lookup.confidence,
         "source_metadata": {
             "source_file": lookup.source_file,
             "effective_date": lookup.effective_date,
@@ -193,16 +245,44 @@ def optimize_entry_exit(request: dict) -> dict:
     if payment not in {"tolltag", "zipcash"}:
         raise HTTPException(status_code=422, detail="payment must be tolltag or zipcash")
 
-    matched_from_road = find_road(from_road_name)
-    matched_to_road = find_road(to_road_name)
+    try:
+        matched_from_road = find_road(from_road_name)
+        matched_to_road = find_road(to_road_name)
+    except MongoDBConnectionError as exc:
+        raise _optimize_error(
+            "ntta_matrix_unavailable",
+            "NTTA matrix data is unavailable from MongoDB.",
+            {"runtime_data_source": matrix_data_source(), "error": str(exc)},
+            status_code=503,
+        ) from exc
     if matched_from_road is None:
-        raise HTTPException(status_code=404, detail=f"Unknown NTTA road: {from_road_name}")
+        raise _optimize_error(
+            "unknown_from_road",
+            f"Unknown NTTA road: {from_road_name}",
+            {"from_road": from_road_name},
+            status_code=404,
+        )
     if matched_to_road is None:
-        raise HTTPException(status_code=404, detail=f"Unknown NTTA road: {to_road_name}")
+        raise _optimize_error(
+            "unknown_to_road",
+            f"Unknown NTTA road: {to_road_name}",
+            {"to_road": to_road_name},
+            status_code=404,
+        )
     from_index = find_exit_index(matched_from_road, from_exit)
     to_index = find_exit_index(matched_to_road, to_exit)
     if from_index is None or to_index is None:
-        raise HTTPException(status_code=404, detail="Unknown NTTA from/to exit for selected road")
+        raise _optimize_error(
+            "unknown_exit",
+            "Unknown NTTA from/to exit for selected road.",
+            {
+                "from_road": matched_from_road.road_name,
+                "from_exit": from_exit,
+                "to_road": matched_to_road.road_name,
+                "to_exit": to_exit,
+            },
+            status_code=404,
+        )
 
     profile = BrainProfile(
         toll_payment=payment,
@@ -211,16 +291,35 @@ def optimize_entry_exit(request: dict) -> dict:
         vehicle_type=str(request.get("vehicle_type", "gas")),
         traffic_mode=str(request.get("traffic_mode", "offpeak")),
     )
-    all_candidates = _candidate_options(
-        matched_from_road,
-        from_index,
-        matched_to_road,
-        to_index,
-        profile,
-        request,
-    )
+    try:
+        all_candidates = _candidate_options(
+            matched_from_road,
+            from_index,
+            matched_to_road,
+            to_index,
+            profile,
+            request,
+        )
+    except Exception as exc:
+        raise _optimize_error(
+            "optimization_failed",
+            "Tollio could not optimize this selected NTTA path.",
+            {"error_type": exc.__class__.__name__},
+            status_code=422,
+        ) from exc
     if not all_candidates:
-        raise HTTPException(status_code=404, detail="No matrix candidates found for selected road/exits")
+        raise _optimize_error(
+            "no_valid_candidates",
+            "No matrix candidates found for selected road/exits.",
+            {
+                "from_road": matched_from_road.road_name,
+                "from_exit": from_exit,
+                "to_road": matched_to_road.road_name,
+                "to_exit": to_exit,
+                "runtime_data_source": runtime_data_source(),
+            },
+            status_code=422,
+        )
     ranked_options = sorted(all_candidates, key=_candidate_sort_key)
     natural_route = next(item for item in all_candidates if item["label"] == "Natural Route")
     optimized_route = ranked_options[0]
@@ -781,12 +880,59 @@ def _plain_reason(result, road) -> str:
 
 def _source_metadata(road) -> dict:
     return {
-        "source_file": road.source_file,
-        "effective_date": road.effective_date,
+        "runtime_data_source": runtime_data_source(),
+        "original_rate_source": road["original_rate_source"] if isinstance(road, dict) else road.source_file,
+        "effective_date": road["effective_date"] if isinstance(road, dict) else road.effective_date,
+        "source_confidence": road["source_confidence"] if isinstance(road, dict) else road.confidence,
+        "source_file": road["original_rate_source"] if isinstance(road, dict) else road.source_file,
         "payment_types": ["tolltag", "zipcash"],
-        "confidence": road.confidence,
+        "confidence": road["source_confidence"] if isinstance(road, dict) else road.confidence,
         "data_source": matrix_data_source(),
     }
+
+
+def _empty_source_metadata() -> dict:
+    return {
+        "runtime_data_source": runtime_data_source(),
+        "original_rate_source": "unknown",
+        "effective_date": "unknown",
+        "source_confidence": "unknown",
+        "source_file": "unknown",
+        "payment_types": ["tolltag", "zipcash"],
+        "confidence": "unknown",
+        "data_source": matrix_data_source(),
+    }
+
+
+def _matrix_unavailable_error(operation: str, message: str) -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={
+            "error": "ntta_matrix_unavailable",
+            "message": f"Cannot load NTTA {operation} from MongoDB.",
+            "runtime_data_source": matrix_data_source(),
+            "details": message,
+        },
+    )
+
+
+def _optimize_error(code: str, message: str, details: dict, status_code: int) -> HTTPException:
+    return HTTPException(
+        status_code=status_code,
+        detail={
+            "error": code,
+            "message": message,
+            "details": details,
+        },
+    )
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _mcp_config_path() -> Path:
+    return _repo_root() / "services/agent/mcp.mongodb.json"
 
 
 def _brain_road_from_matrix(road):

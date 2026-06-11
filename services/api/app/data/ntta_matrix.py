@@ -1,4 +1,5 @@
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -40,6 +41,7 @@ DATA_FILE = Path(__file__).with_name("ntta_matrices_april_2025.json")
 
 
 _LOCAL_MATRIX_CACHE: Optional[List[NTTAMatrixRoad]] = None
+_MONGODB_MATRIX_CACHE: Optional[List[NTTAMatrixRoad]] = None
 
 
 def load_matrix_roads() -> List[NTTAMatrixRoad]:
@@ -48,11 +50,12 @@ def load_matrix_roads() -> List[NTTAMatrixRoad]:
             roads = load_matrix_roads_from_mongodb()
             if roads:
                 return roads
+            raise MongoDBConnectionError("MongoDB ntta_matrices collection has no seeded road documents.")
         except MongoDBConnectionError:
-            if _strict_mongodb_mode():
+            if not allow_local_ntta_fallback():
                 raise
         except Exception:
-            if _strict_mongodb_mode():
+            if not allow_local_ntta_fallback():
                 raise
     return load_matrix_roads_from_json()
 
@@ -67,6 +70,9 @@ def load_matrix_roads_from_json() -> List[NTTAMatrixRoad]:
 
 
 def load_matrix_roads_from_mongodb(database=None) -> List[NTTAMatrixRoad]:
+    global _MONGODB_MATRIX_CACHE
+    if database is None and _MONGODB_MATRIX_CACHE is not None:
+        return _MONGODB_MATRIX_CACHE
     db = database if database is not None else get_database()
     if db is None:
         return []
@@ -79,7 +85,10 @@ def load_matrix_roads_from_mongodb(database=None) -> List[NTTAMatrixRoad]:
         "confidence": docs[0].get("confidence", "unknown"),
         "roads": docs,
     }
-    return _roads_from_payload(payload)
+    roads = _roads_from_payload(payload)
+    if database is None:
+        _MONGODB_MATRIX_CACHE = roads
+    return roads
 
 
 def matrix_data_source() -> str:
@@ -87,10 +96,18 @@ def matrix_data_source() -> str:
         try:
             if load_matrix_roads_from_mongodb():
                 return "mongodb"
-            return "local_json_fallback_empty_mongodb"
+            return "local_json" if allow_local_ntta_fallback() else "mongodb_unavailable"
         except Exception:
-            return "local_json_fallback_mongodb_unavailable"
+            return "local_json" if allow_local_ntta_fallback() else "mongodb_unavailable"
     return "local_json"
+
+
+def runtime_data_source() -> str:
+    return "mongodb" if matrix_data_source() == "mongodb" else "local_json"
+
+
+def allow_local_ntta_fallback() -> bool:
+    return os.getenv("ALLOW_LOCAL_NTTA_FALLBACK", "false").strip().lower() == "true"
 
 
 def _roads_from_payload(payload: dict) -> List[NTTAMatrixRoad]:
@@ -105,18 +122,12 @@ def _roads_from_payload(payload: dict) -> List[NTTAMatrixRoad]:
                 exits=item["exits"],
                 tolltag=item["tolltag"],
                 zipcash=item["zipcash"],
-                source_file=source.get("source_file", payload["source_file"]),
-                effective_date=source.get("effective_date", payload["effective_date"]),
-                confidence=source.get("confidence", payload["confidence"]),
+                source_file=source.get("source_file", item.get("source_file", payload["source_file"])),
+                effective_date=source.get("effective_date", item.get("effective_date", payload["effective_date"])),
+                confidence=source.get("confidence", item.get("confidence", payload["confidence"])),
             )
         )
     return roads
-
-
-def _strict_mongodb_mode() -> bool:
-    import os
-
-    return os.getenv("TOLLIO_MONGODB_STRICT", "false").strip().lower() == "true"
 
 
 def find_road(road: str) -> Optional[NTTAMatrixRoad]:
@@ -185,6 +196,7 @@ def price_by_index(
 
 
 def road_options() -> list[dict]:
+    runtime_source = runtime_data_source()
     return [
         {
             "road_id": road.road_id,
@@ -194,6 +206,9 @@ def road_options() -> list[dict]:
             "source_file": road.source_file,
             "effective_date": road.effective_date,
             "confidence": road.confidence,
+            "runtime_data_source": runtime_source,
+            "original_rate_source": road.source_file,
+            "source_confidence": road.confidence,
         }
         for road in load_matrix_roads()
     ]

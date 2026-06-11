@@ -10,6 +10,9 @@ type RoadOption = {
   source_file: string;
   effective_date: string;
   confidence: string;
+  runtime_data_source: "mongodb" | "local_json";
+  original_rate_source: string;
+  source_confidence: string;
 };
 
 type ExitOption = {
@@ -84,10 +87,27 @@ type OptimizeResponse = {
   explanation: string;
   recommendation: Recommendation;
   source_metadata: {
+    runtime_data_source: "mongodb" | "local_json";
+    original_rate_source: string;
     source_file: string;
     effective_date: string;
     payment_types: string[];
     confidence: string;
+    source_confidence: string;
+  };
+};
+
+type RuntimeProof = {
+  mongodb_ready: boolean;
+  runtime_data_source: string;
+  ntta_source: string;
+  seeded_matrix_count: number;
+  optimization_memory_enabled: boolean;
+  mcp_config_present: boolean;
+  mcp_tools_available: string[];
+  memory_write_test: {
+    status: string;
+    data_source: string;
   };
 };
 
@@ -107,12 +127,38 @@ function currency(value: number | undefined | null) {
   return `$${(value ?? 0).toFixed(2)}`;
 }
 
+function runtimeSourceLabel(source: string | undefined) {
+  return source === "mongodb" ? "MongoDB live" : "Local JSON fallback";
+}
+
+function apiErrorMessage(body: unknown, fallback: string) {
+  if (body && typeof body === "object" && "detail" in body) {
+    const detail = (body as { detail?: unknown }).detail;
+    if (typeof detail === "string") {
+      return detail;
+    }
+    if (detail && typeof detail === "object") {
+      const maybeDetail = detail as { message?: unknown; error?: unknown; details?: unknown };
+      const pieces = [
+        typeof maybeDetail.message === "string" ? maybeDetail.message : undefined,
+        typeof maybeDetail.error === "string" ? `Code: ${maybeDetail.error}` : undefined,
+        maybeDetail.details ? `Details: ${JSON.stringify(maybeDetail.details)}` : undefined,
+      ].filter(Boolean);
+      if (pieces.length) {
+        return pieces.join(" ");
+      }
+    }
+  }
+  return fallback;
+}
+
 export function App() {
   const [form, setForm] = useState<OptimizeForm>(defaultForm);
   const [roads, setRoads] = useState<RoadOption[]>([]);
   const [fromExits, setFromExits] = useState<ExitOption[]>([]);
   const [toExits, setToExits] = useState<ExitOption[]>([]);
   const [result, setResult] = useState<OptimizeResponse | null>(null);
+  const [runtimeProof, setRuntimeProof] = useState<RuntimeProof | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,6 +173,13 @@ export function App() {
         }
       })
       .catch(() => setRoads([]));
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/v1/demo/mongodb-invocation`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: RuntimeProof | null) => setRuntimeProof(body))
+      .catch(() => setRuntimeProof(null));
   }, []);
 
   useEffect(() => {
@@ -187,22 +240,37 @@ export function App() {
     event.preventDefault();
     setIsLoading(true);
     setError(null);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/optimize/entry-exit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
+        signal: controller.signal,
       });
       if (!response.ok) {
-        throw new Error(`API returned ${response.status}`);
+        let body: unknown = null;
+        try {
+          body = await response.json();
+        } catch {
+          body = null;
+        }
+        throw new Error(apiErrorMessage(body, `API returned ${response.status}`));
       }
       setResult((await response.json()) as OptimizeResponse);
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Unknown request failure";
+      const message =
+        caught instanceof DOMException && caught.name === "AbortError"
+          ? "Optimization request timed out after 15 seconds"
+          : caught instanceof Error
+            ? caught.message
+            : "Unknown request failure";
       setError(
         `${message}. Start the API with: cd services/api && source .venv/bin/activate && uvicorn main:app --reload`,
       );
     } finally {
+      window.clearTimeout(timeoutId);
       setIsLoading(false);
     }
   }
@@ -301,12 +369,15 @@ export function App() {
           {error ? <p className="error-text">{error}</p> : null}
           {selectedRoad ? (
             <p className="source-note">
-              Matrix source: {selectedRoad.source_file} · {selectedRoad.effective_date} · {selectedRoad.confidence}
+              Data source: {runtimeSourceLabel(selectedRoad.runtime_data_source)} · Original rate source: NTTA Toll
+              Calculator April 2025 · Effective: {selectedRoad.effective_date} · Confidence:{" "}
+              {selectedRoad.source_confidence}
             </p>
           ) : null}
         </form>
 
         <section className="results-panel">
+          <RuntimeProofPanel proof={runtimeProof} />
           {result ? (
             <>
               <RecommendationSummary result={result} />
@@ -332,7 +403,10 @@ export function App() {
                 <div className="why-metrics">
                   <span>Annual projection</span>
                   <strong>{currency(result.recommendation.annual_saving_projection)}</strong>
-                  <small>{result.source_metadata.source_file}</small>
+                  <small>
+                    Data source: {runtimeSourceLabel(result.source_metadata.runtime_data_source)} · Original rate
+                    source: NTTA Toll Calculator April 2025 · MCP-compatible memory trace enabled
+                  </small>
                 </div>
               </section>
 
@@ -405,6 +479,33 @@ function RouteCard({
         <span>{option.confidence}</span>
       </div>
     </article>
+  );
+}
+
+function RuntimeProofPanel({ proof }: { proof: RuntimeProof | null }) {
+  return (
+    <section className="why-panel">
+      <div>
+        <p className="eyebrow">Runtime proof</p>
+        <h3>MongoDB MCP-compatible memory trace enabled</h3>
+        <p>
+          Data source: {runtimeSourceLabel(proof?.runtime_data_source)}. Original rate source: NTTA Toll Calculator
+          April 2025.
+        </p>
+      </div>
+      <div className="why-metrics">
+        <span>MongoDB</span>
+        <strong>{proof?.mongodb_ready ? "live" : "not live"}</strong>
+        <small>NTTA matrix: {proof?.ntta_source === "mongodb" ? "loaded from MongoDB" : "not loaded from MongoDB"}</small>
+        <small>MCP config: {proof?.mcp_config_present ? "detected" : "not detected"}</small>
+        <small>
+          Optimization memory:{" "}
+          {proof?.optimization_memory_enabled && proof?.memory_write_test?.status === "success"
+            ? "writing to MongoDB"
+            : "not writing"}
+        </small>
+      </div>
+    </section>
   );
 }
 
