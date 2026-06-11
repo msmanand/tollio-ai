@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from urllib.error import HTTPError
 
 from app.models import (
     BudgetPeriod,
@@ -135,6 +136,7 @@ def test_live_mode_with_key_invokes_gemini_runtime_path(monkeypatch):
 
     monkeypatch.setenv("TOLLIO_AGENT_MODE", "live")
     monkeypatch.setenv("GEMINI_API_KEY", "test-only-key")
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
     monkeypatch.setattr("app.services.explanation_service.urllib_request.urlopen", fake_urlopen)
 
     explanation = generate_explanation(build_commute_plan(_sample_request()))
@@ -143,6 +145,7 @@ def test_live_mode_with_key_invokes_gemini_runtime_path(monkeypatch):
     assert explanation.short_explanation == "live short"
     assert calls
     assert "generativelanguage.googleapis.com" in calls[0][0]
+    assert "/models/gemini-2.5-flash-lite:generateContent" in calls[0][0]
 
 
 def test_demo_gemini_invocation_endpoint_is_safe_without_credentials(monkeypatch):
@@ -194,4 +197,44 @@ def test_demo_gemini_invocation_endpoint_uses_live_path_when_gated(monkeypatch):
     assert body["invocation_path"]["gemini_invoked"] is True
     assert body["invocation_path"]["data_source"] == "live_gemini"
     assert body["sample_explanation"]["short_explanation"] == "endpoint live"
-    assert body["status"] == "live_gemini_invoked"
+    assert body["status"] == "live_explanation_returned"
+
+
+def test_demo_gemini_invocation_endpoint_falls_back_on_http_error(monkeypatch):
+    def fake_urlopen(req, timeout):
+        raise HTTPError(
+            req.full_url,
+            403,
+            "Forbidden",
+            hdrs=None,
+            fp=_FakeErrorBody(
+                b'{"error":{"message":"API key not valid. Please pass a valid API key."}}'
+            ),
+        )
+
+    monkeypatch.setenv("TOLLIO_AGENT_MODE", "live")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only-key")
+    monkeypatch.setattr("app.services.explanation_service.urllib_request.urlopen", fake_urlopen)
+
+    response = client.get("/api/v1/demo/gemini-invocation")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "live"
+    assert body["gemini_configured"] is True
+    assert body["invocation_path"]["gemini_invoked"] is False
+    assert body["invocation_path"]["data_source"] == "mock_gemini_fallback"
+    assert body["invocation_path"]["live_error"].startswith("HTTP 403")
+    assert "test-only-key" not in body["invocation_path"]["live_error"]
+    assert body["status"] == "mock_explanation_returned"
+
+
+class _FakeErrorBody:
+    def __init__(self, payload: bytes):
+        self.payload = payload
+
+    def read(self):
+        return self.payload
+
+    def close(self):
+        return None

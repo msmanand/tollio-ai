@@ -1,6 +1,7 @@
 import json
 import os
 from typing import Any, List, Optional
+from urllib.error import HTTPError, URLError
 from urllib import request as urllib_request
 
 from pydantic import BaseModel
@@ -23,7 +24,7 @@ def generate_explanation(commute_plan_output: Any) -> ExplanationBundle:
             return _generate_mock_explanation(
                 commute_plan_output,
                 data_source="mock_gemini_fallback",
-                live_error=exc.__class__.__name__,
+                live_error=_sanitize_gemini_error(exc),
             )
     return _generate_mock_explanation(commute_plan_output)
 
@@ -83,6 +84,7 @@ def _live_gemini_enabled() -> bool:
 
 def _generate_live_gemini_explanation(commute_plan_output: Any) -> ExplanationBundle:
     prompt = _build_gemini_prompt(commute_plan_output)
+    model = _gemini_model()
     payload = {
         "contents": [
             {
@@ -95,12 +97,13 @@ def _generate_live_gemini_explanation(commute_plan_output: Any) -> ExplanationBu
         ],
         "generationConfig": {
             "responseMimeType": "application/json",
+            "maxOutputTokens": 512,
             "temperature": 0.2,
         },
     }
     api_key = os.environ["GEMINI_API_KEY"]
     req = urllib_request.Request(
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -109,7 +112,7 @@ def _generate_live_gemini_explanation(commute_plan_output: Any) -> ExplanationBu
         response_payload = json.loads(response.read().decode("utf-8"))
 
     text = response_payload["candidates"][0]["content"]["parts"][0]["text"]
-    parsed = json.loads(text)
+    parsed = _parse_gemini_json_text(text)
     return ExplanationBundle(
         short_explanation=parsed["short_explanation"],
         detailed_explanation=parsed["detailed_explanation"],
@@ -117,6 +120,44 @@ def _generate_live_gemini_explanation(commute_plan_output: Any) -> ExplanationBu
         caution_notes=parsed.get("caution_notes", []),
         data_source="live_gemini",
     )
+
+
+def _gemini_model() -> str:
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite").strip()
+    return model.removeprefix("models/")
+
+
+def _parse_gemini_json_text(text: str) -> dict:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = stripped.strip("`")
+        if stripped.startswith("json"):
+            stripped = stripped[4:]
+    return json.loads(stripped.strip())
+
+
+def _sanitize_gemini_error(exc: Exception) -> str:
+    if isinstance(exc, HTTPError):
+        body = ""
+        try:
+            body_payload = json.loads(exc.read().decode("utf-8"))
+            body = body_payload.get("error", {}).get("message", "")
+        except Exception:
+            body = exc.reason or ""
+        message = f"HTTP {exc.code}"
+        if body:
+            message = f"{message}: {body}"
+        return _redact_secret_like_values(message)
+    if isinstance(exc, URLError):
+        return _redact_secret_like_values(f"URL error: {exc.reason}")
+    return exc.__class__.__name__
+
+
+def _redact_secret_like_values(message: str) -> str:
+    api_key = os.getenv("GEMINI_API_KEY", "")
+    if api_key:
+        message = message.replace(api_key, "[redacted]")
+    return message
 
 
 def _build_gemini_prompt(commute_plan_output: Any) -> str:

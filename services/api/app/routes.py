@@ -86,7 +86,7 @@ def demo_gemini_invocation() -> dict:
             "driver_friendly_summary": explanation.driver_friendly_summary,
             "caution_notes": explanation.caution_notes,
         },
-        "status": "live_gemini_invoked" if gemini_invoked else "mock_explanation_returned",
+        "status": "live_explanation_returned" if gemini_invoked else "mock_explanation_returned",
     }
 
 
