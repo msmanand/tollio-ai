@@ -18,8 +18,9 @@ type ExitOption = {
 };
 
 type OptimizeForm = {
-  road: string;
+  from_road: string;
   from_exit: string;
+  to_road: string;
   to_exit: string;
   payment: "tolltag" | "zipcash";
   mpg: number;
@@ -30,8 +31,11 @@ type OptimizeForm = {
 
 type BrainOption = {
   label: string;
+  route_path_label: string;
   entry: string;
   exit: string;
+  entry_instruction: string;
+  exit_instruction: string;
   toll_cost: number;
   toll_price: number;
   natural_toll_cost: number;
@@ -88,8 +92,9 @@ type OptimizeResponse = {
 };
 
 const defaultForm: OptimizeForm = {
-  road: "DNT",
+  from_road: "DNT",
   from_exit: "Walnut Hill/Royal",
+  to_road: "DNT",
   to_exit: "Trinity Mills/Frankford",
   payment: "tolltag",
   mpg: 28,
@@ -105,7 +110,8 @@ function currency(value: number | undefined | null) {
 export function App() {
   const [form, setForm] = useState<OptimizeForm>(defaultForm);
   const [roads, setRoads] = useState<RoadOption[]>([]);
-  const [exits, setExits] = useState<ExitOption[]>([]);
+  const [fromExits, setFromExits] = useState<ExitOption[]>([]);
+  const [toExits, setToExits] = useState<ExitOption[]>([]);
   const [result, setResult] = useState<OptimizeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,40 +122,61 @@ export function App() {
       .then((body: { roads: RoadOption[] }) => {
         setRoads(body.roads);
         const first = body.roads[0];
-        if (first && !body.roads.some((road) => road.road_short === form.road)) {
-          setForm((current) => ({ ...current, road: first.road_short }));
+        if (first && !body.roads.some((road) => road.road_short === form.from_road)) {
+          setForm((current) => ({ ...current, from_road: first.road_short, to_road: first.road_short }));
         }
       })
       .catch(() => setRoads([]));
   }, []);
 
   useEffect(() => {
-    if (!form.road) {
+    if (!form.from_road) {
       return;
     }
-    fetch(`${API_BASE_URL}/api/v1/ntta/exits?road=${encodeURIComponent(form.road)}`)
+    fetch(`${API_BASE_URL}/api/v1/ntta/exits?road=${encodeURIComponent(form.from_road)}`)
       .then((response) => (response.ok ? response.json() : { exits: [] }))
       .then((body: { exits: ExitOption[] }) => {
-        setExits(body.exits);
+        setFromExits(body.exits);
         if (!body.exits.length) {
           return;
         }
         setForm((current) => {
           const fromExists = body.exits.some((exit) => exit.exit_name === current.from_exit);
-          const toExists = body.exits.some((exit) => exit.exit_name === current.to_exit);
           return {
             ...current,
             from_exit: fromExists ? current.from_exit : body.exits[0].exit_name,
+            to_exit: current.to_exit,
+          };
+        });
+      })
+      .catch(() => setFromExits([]));
+  }, [form.from_road]);
+
+  useEffect(() => {
+    if (!form.to_road) {
+      return;
+    }
+    fetch(`${API_BASE_URL}/api/v1/ntta/exits?road=${encodeURIComponent(form.to_road)}`)
+      .then((response) => (response.ok ? response.json() : { exits: [] }))
+      .then((body: { exits: ExitOption[] }) => {
+        setToExits(body.exits);
+        if (!body.exits.length) {
+          return;
+        }
+        setForm((current) => {
+          const toExists = body.exits.some((exit) => exit.exit_name === current.to_exit);
+          return {
+            ...current,
             to_exit: toExists ? current.to_exit : body.exits[Math.min(11, body.exits.length - 1)].exit_name,
           };
         });
       })
-      .catch(() => setExits([]));
-  }, [form.road]);
+      .catch(() => setToExits([]));
+  }, [form.to_road]);
 
   const selectedRoad = useMemo(
-    () => roads.find((road) => road.road_short === form.road || road.road_name === form.road),
-    [form.road, roads],
+    () => roads.find((road) => road.road_short === form.from_road || road.road_name === form.from_road),
+    [form.from_road, roads],
   );
 
   function update<K extends keyof OptimizeForm>(key: K, value: OptimizeForm[K]) {
@@ -196,8 +223,8 @@ export function App() {
         <form className="planner-panel" onSubmit={optimize}>
           <div className="form-grid">
             <label>
-              Road
-              <select value={form.road} onChange={(event) => update("road", event.target.value)}>
+              From Road
+              <select value={form.from_road} onChange={(event) => update("from_road", event.target.value)}>
                 {roads.map((road) => (
                   <option key={road.road_short} value={road.road_short}>
                     {road.road_name}
@@ -206,9 +233,9 @@ export function App() {
               </select>
             </label>
             <label>
-              From / Begin Trip
+              From Exit
               <select value={form.from_exit} onChange={(event) => update("from_exit", event.target.value)}>
-                {exits.map((exit) => (
+                {fromExits.map((exit) => (
                   <option key={`from-${exit.exit_index}`} value={exit.exit_name}>
                     {exit.exit_name}
                   </option>
@@ -216,9 +243,19 @@ export function App() {
               </select>
             </label>
             <label>
-              To / End Trip
+              To Road
+              <select value={form.to_road} onChange={(event) => update("to_road", event.target.value)}>
+                {roads.map((road) => (
+                  <option key={`to-road-${road.road_short}`} value={road.road_short}>
+                    {road.road_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              To Exit
               <select value={form.to_exit} onChange={(event) => update("to_exit", event.target.value)}>
-                {exits.map((exit) => (
+                {toExits.map((exit) => (
                   <option key={`to-${exit.exit_index}`} value={exit.exit_name}>
                     {exit.exit_name}
                   </option>
@@ -258,7 +295,7 @@ export function App() {
             </label>
           </div>
 
-          <button className="primary-button" type="submit" disabled={isLoading || !exits.length}>
+          <button className="primary-button" type="submit" disabled={isLoading || !fromExits.length || !toExits.length}>
             {isLoading ? "Optimizing..." : "Optimize Entry / Exit"}
           </button>
           {error ? <p className="error-text">{error}</p> : null}
@@ -318,14 +355,12 @@ export function App() {
                       <span>{option.value_score}% value · {option.confidence}</span>
                     </div>
                     <p>
-                      {option.entry} to {option.exit}: {option.explanation}
+                      {option.route_path_label}: {option.entry_instruction}; {option.exit_instruction}.
                     </p>
+                    <p>{option.explanation}</p>
                     <small>
                       Toll {currency(option.toll_cost)} · saved {currency(option.toll_saved)} · net{" "}
                       {currency(option.net_savings)} · extra time {option.added_minutes} min
-                    </small>
-                    <small>
-                      Wasted behind: {option.wasted_behind} exits · unused ahead: {option.unused_ahead} exits
                     </small>
                   </article>
                 ))}
@@ -334,7 +369,7 @@ export function App() {
           ) : (
             <div className="empty-state">
               <p className="eyebrow">Ready</p>
-              <h2>Select an NTTA road, begin trip, end trip, and payment type.</h2>
+              <h2>Select from road, from exit, to road, to exit, and payment type.</h2>
             </div>
           )}
         </section>
@@ -359,7 +394,7 @@ function RouteCard({
         <h3>{title}</h3>
       </div>
       <p>
-        {option.entry} to {option.exit}
+        {option.route_path_label}: {option.entry_instruction}; {option.exit_instruction}
       </p>
       <div className="brain-card-metrics">
         <span>Toll {currency(option.toll_cost)}</span>

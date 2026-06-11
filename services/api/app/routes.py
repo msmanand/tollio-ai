@@ -18,8 +18,10 @@ from app.services.budget_engine import evaluate_budget
 from app.services.commute_planner import build_commute_plan
 from app.services.tollio_brain import (
     BrainProfile,
+    PathSegment,
     entryVScore,
     exitVScore,
+    findPaths,
     getPrice,
     getServiceRoadTime,
     matrix_brain_roads,
@@ -121,18 +123,22 @@ def ntta_price(road: str, from_exit: str, to_exit: str, payment: str = "tolltag"
 
 @router.post("/api/v1/optimize/entry-exit")
 def optimize_entry_exit(request: dict) -> dict:
-    road_name = str(request.get("road", ""))
+    from_road_name = str(request.get("from_road") or request.get("road") or "")
+    to_road_name = str(request.get("to_road") or request.get("road") or from_road_name)
     from_exit = str(request.get("from_exit", ""))
     to_exit = str(request.get("to_exit", ""))
     payment = str(request.get("payment", "tolltag"))
     if payment not in {"tolltag", "zipcash"}:
         raise HTTPException(status_code=422, detail="payment must be tolltag or zipcash")
 
-    matched_road = find_road(road_name)
-    if matched_road is None:
-        raise HTTPException(status_code=404, detail=f"Unknown NTTA road: {road_name}")
-    from_index = find_exit_index(matched_road, from_exit)
-    to_index = find_exit_index(matched_road, to_exit)
+    matched_from_road = find_road(from_road_name)
+    matched_to_road = find_road(to_road_name)
+    if matched_from_road is None:
+        raise HTTPException(status_code=404, detail=f"Unknown NTTA road: {from_road_name}")
+    if matched_to_road is None:
+        raise HTTPException(status_code=404, detail=f"Unknown NTTA road: {to_road_name}")
+    from_index = find_exit_index(matched_from_road, from_exit)
+    to_index = find_exit_index(matched_to_road, to_exit)
     if from_index is None or to_index is None:
         raise HTTPException(status_code=404, detail="Unknown NTTA from/to exit for selected road")
 
@@ -143,7 +149,14 @@ def optimize_entry_exit(request: dict) -> dict:
         vehicle_type=str(request.get("vehicle_type", "gas")),
         traffic_mode=str(request.get("traffic_mode", "offpeak")),
     )
-    all_candidates = _candidate_options(matched_road, from_index, to_index, profile, request)
+    all_candidates = _candidate_options(
+        matched_from_road,
+        from_index,
+        matched_to_road,
+        to_index,
+        profile,
+        request,
+    )
     if not all_candidates:
         raise HTTPException(status_code=404, detail="No matrix candidates found for selected road/exits")
     ranked_options = sorted(all_candidates, key=_candidate_sort_key)
@@ -158,7 +171,7 @@ def optimize_entry_exit(request: dict) -> dict:
         "all_candidates": all_candidates,
         "explanation": optimized_route["explanation"],
         "recommendation": recommendation,
-        "source_metadata": _source_metadata(matched_road),
+        "source_metadata": _source_metadata(matched_from_road),
     }
 
 
@@ -200,69 +213,57 @@ def budget_status() -> BudgetStatusResponse:
     )
 
 
-def _candidate_options(road, from_index: int, to_index: int, profile: BrainProfile, request: dict) -> list[dict]:
-    brain_road = _brain_road_from_matrix(road)
-    natural = _candidate_for_pair("Natural Route", road, brain_road, from_index, to_index, from_index, to_index, profile, request)
+def _candidate_options(from_road, from_index: int, to_road, to_index: int, profile: BrainProfile, request: dict) -> list[dict]:
+    brain_roads = matrix_brain_roads()
+    paths = findPaths(from_road.road_id, from_index, to_road.road_id, to_index)
+    if not paths:
+        return []
+    natural_path = paths[0]
+    natural = _candidate_for_path("Natural Route", natural_path, natural_path, profile, request)
     if natural is None:
         return []
 
     pool = []
-    for entry_index, exit_index in _candidate_pairs(from_index, to_index):
-        candidate = _candidate_for_pair("Candidate", road, brain_road, from_index, to_index, entry_index, exit_index, profile, request)
-        if candidate is None:
-            continue
-        if _reject_candidate(candidate):
-            continue
-        pool.append(candidate)
+    for path in paths:
+        for candidate_path in _candidate_paths_for_natural_path(path):
+            candidate = _candidate_for_path("Candidate", candidate_path, natural_path, profile, request)
+            if candidate is None or _reject_candidate(candidate):
+                continue
+            pool.append(candidate)
 
-    labeled = [natural]
     non_natural = [candidate for candidate in pool if not _same_path(candidate, natural)]
-
     best_value = _best_by(non_natural, key=_candidate_sort_key)
     cheapest = _best_by(non_natural, key=lambda item: (item["toll_cost"], item["added_minutes"], -item["value_score"]))
-    budget_saver = _best_by(
-        [candidate for candidate in non_natural if candidate["net_savings"] > 0],
-        key=lambda item: (-item["net_savings"], item["added_minutes"], -item["value_score"]),
-    )
     fastest = _best_by(pool, key=lambda item: (item["added_minutes"], -item["net_savings"], -item["value_score"]))
 
+    labeled = [natural]
     for label, candidate in [
         ("Best Value Route", best_value),
         ("Cheapest Route", cheapest),
-        ("Budget Saver Route", budget_saver),
         ("Fastest Compatible Route", fastest),
     ]:
         if candidate is not None:
             labeled.append(_with_label(candidate, label, natural))
-
-    unique = []
-    seen_labels = set()
-    for candidate in labeled:
-        if candidate["label"] in seen_labels:
-            continue
-        unique.append(candidate)
-        seen_labels.add(candidate["label"])
-    return unique
+    return _unique_user_options(labeled)
 
 
-def _candidate_for_pair(
-    label: str,
-    road,
-    brain_road,
-    natural_entry: int,
-    natural_exit: int,
-    entry_index: int,
-    exit_index: int,
-    profile: BrainProfile,
-    request: dict,
-):
-    price = getPrice(brain_road, entry_index, exit_index, profile.toll_payment)
-    natural_price = getPrice(brain_road, natural_entry, natural_exit, profile.toll_payment)
+def _candidate_for_path(label: str, path: list[PathSegment], natural_path: list[PathSegment], profile: BrainProfile, request: dict):
+    natural_price = _path_price(natural_path, profile)
+    price = _path_price(path, profile)
     if price is None or natural_price is None:
         return None
 
-    entry_detour = abs(entry_index - natural_entry)
-    exit_detour = abs(natural_exit - exit_index)
+    first = path[0]
+    last = path[-1]
+    natural_first = natural_path[0]
+    natural_last = natural_path[-1]
+    first_road = _brain_road(first.road)
+    last_road = _brain_road(last.road)
+    natural_first_road = _brain_road(natural_first.road)
+    natural_last_road = _brain_road(natural_last.road)
+
+    entry_detour = abs(first.entry - natural_first.entry)
+    exit_detour = abs(natural_last.exit - last.exit)
     entry_service = getServiceRoadTime(entry_detour, profile.traffic_mode)
     exit_service = getServiceRoadTime(exit_detour, profile.traffic_mode)
     service_road_minutes = entry_service.minutes + exit_service.minutes
@@ -271,16 +272,16 @@ def _candidate_for_pair(
     toll_saved = round(natural_price - price, 2)
     net_savings = round(toll_saved - gas_cost, 2)
 
-    entry_score = entryVScore(brain_road, entry_index, exit_index, profile.toll_payment)
-    exit_score = exitVScore(brain_road, entry_index, exit_index, profile.toll_payment)
-    value_score = min(entry_score, exit_score)
-    natural_entry_score = entryVScore(brain_road, natural_entry, natural_exit, profile.toll_payment)
-    natural_exit_score = exitVScore(brain_road, natural_entry, natural_exit, profile.toll_payment)
-    natural_value_score = min(natural_entry_score, natural_exit_score)
-    wasted = wastedBehind(brain_road, entry_index, exit_index, profile.toll_payment)
-    unused = unusedAhead(brain_road, entry_index, exit_index, profile.toll_payment)
-    natural_wasted = wastedBehind(brain_road, natural_entry, natural_exit, profile.toll_payment)
-    natural_unused = unusedAhead(brain_road, natural_entry, natural_exit, profile.toll_payment)
+    entry_score = entryVScore(first_road, first.entry, first.exit, profile.toll_payment)
+    exit_score = exitVScore(last_road, last.entry, last.exit, profile.toll_payment)
+    natural_entry_score = entryVScore(natural_first_road, natural_first.entry, natural_first.exit, profile.toll_payment)
+    natural_exit_score = exitVScore(natural_last_road, natural_last.entry, natural_last.exit, profile.toll_payment)
+    value_score = _path_value_score(path, profile)
+    natural_value_score = _path_value_score(natural_path, profile)
+    wasted = wastedBehind(first_road, first.entry, first.exit, profile.toll_payment)
+    unused = unusedAhead(last_road, last.entry, last.exit, profile.toll_payment)
+    natural_wasted = wastedBehind(natural_first_road, natural_first.entry, natural_first.exit, profile.toll_payment)
+    natural_unused = unusedAhead(natural_last_road, natural_last.entry, natural_last.exit, profile.toll_payment)
     cost_per_minute_saved = None if service_road_minutes == 0 else round(toll_saved / service_road_minutes, 2)
     budget_impact = _budget_impact(price, request)
     confidence = _confidence(price, natural_price, net_savings, service_road_minutes)
@@ -301,12 +302,14 @@ def _candidate_for_pair(
         "driver_simplicity": _simplicity_score(entry_detour, exit_detour, service_road_minutes),
         "confidence_rank": _confidence_rank(confidence),
     }
+    route_path_label = _path_label(path)
     explanation = _candidate_explanation(
-        road,
-        natural_entry,
-        natural_exit,
-        entry_index,
-        exit_index,
+        first_road,
+        last_road,
+        natural_first.entry,
+        natural_last.exit,
+        first.entry,
+        last.exit,
         toll_saved,
         net_savings,
         gas_cost,
@@ -315,8 +318,11 @@ def _candidate_for_pair(
     )
     return {
         "label": label,
-        "entry": road.exits[entry_index],
-        "exit": road.exits[exit_index],
+        "route_path_label": route_path_label,
+        "entry": first_road.exits[first.entry],
+        "exit": last_road.exits[last.exit],
+        "entry_instruction": f"Enter {first_road.short} at {first_road.exits[first.entry]}",
+        "exit_instruction": f"Exit {last_road.short} at {last_road.exits[last.exit]}",
         "toll_cost": round(price, 2),
         "toll_price": round(price, 2),
         "natural_toll_cost": round(natural_price, 2),
@@ -340,21 +346,88 @@ def _candidate_for_pair(
         "recommendation_label": label,
         "plain_english_reason": explanation,
         "metrics": metrics,
+        "segments": [_segment_payload(segment, profile) for segment in path],
     }
 
 
-def _candidate_pairs(from_index: int, to_index: int) -> list[tuple[int, int]]:
-    direction = 1 if to_index >= from_index else -1
-    points = list(range(from_index, to_index + direction, direction))
-    pairs = []
-    for entry_position, entry_index in enumerate(points[:-1]):
-        for exit_index in points[entry_position + 1 :]:
-            pairs.append((entry_index, exit_index))
-    return pairs
+def _candidate_paths_for_natural_path(path: list[PathSegment]) -> list[list[PathSegment]]:
+    first = path[0]
+    last = path[-1]
+    entry_candidates = _points_between(first.entry, first.exit)[:-1]
+    exit_candidates = _points_between(last.entry, last.exit)[1:]
+    candidates = []
+    for entry in entry_candidates:
+        for exit_idx in exit_candidates:
+            adjusted = list(path)
+            adjusted[0] = PathSegment(
+                road=first.road,
+                entry=entry,
+                exit=first.exit,
+                connector=first.connector,
+                connector_type=first.connector_type,
+            )
+            adjusted[-1] = PathSegment(
+                road=last.road,
+                entry=last.entry if len(path) > 1 else entry,
+                exit=exit_idx,
+                connector=last.connector,
+                connector_type=last.connector_type,
+            )
+            if _valid_candidate_path(adjusted):
+                candidates.append(adjusted)
+    return candidates
+
+
+def _points_between(start: int, end: int) -> list[int]:
+    direction = 1 if end >= start else -1
+    return list(range(start, end + direction, direction))
+
+
+def _valid_candidate_path(path: list[PathSegment]) -> bool:
+    for segment in path:
+        points = _points_between(segment.entry, segment.exit)
+        if len(points) < 2:
+            return False
+    return True
+
+
+def _path_price(path: list[PathSegment], profile: BrainProfile):
+    total = 0.0
+    for segment in path:
+        price = getPrice(_brain_road(segment.road), segment.entry, segment.exit, profile.toll_payment)
+        if price is None:
+            return None
+        total += price
+    return round(total, 2)
+
+
+def _path_value_score(path: list[PathSegment], profile: BrainProfile) -> int:
+    scores = [
+        vScore(_brain_road(segment.road), segment.entry, segment.exit, profile.toll_payment)
+        for segment in path
+    ]
+    return round(sum(scores) / max(len(scores), 1))
+
+
+def _path_label(path: list[PathSegment]) -> str:
+    return " -> ".join(dict.fromkeys(_brain_road(segment.road).short for segment in path))
+
+
+def _segment_payload(segment: PathSegment, profile: BrainProfile) -> dict:
+    road = _brain_road(segment.road)
+    return {
+        "road": road.short,
+        "entry": road.exits[segment.entry],
+        "exit": road.exits[segment.exit],
+        "connector": segment.connector,
+        "connector_type": segment.connector_type,
+        "toll_cost": getPrice(road, segment.entry, segment.exit, profile.toll_payment),
+    }
 
 
 def _candidate_explanation(
-    road,
+    entry_road,
+    exit_road,
     natural_entry: int,
     natural_exit: int,
     entry_index: int,
@@ -372,28 +445,43 @@ def _candidate_explanation(
     attributed = False
     if entry_index != natural_entry:
         if (
+            metrics["value_score"] >= metrics["natural_value_score"]
+            and
             metrics["wasted_behind"] < metrics["natural_wasted_behind"]
             and metrics["entry_value_score"] > metrics["natural_entry_value_score"]
         ):
             parts.append(
-                f"Entering at {road.exits[entry_index]} instead of {road.exits[natural_entry]} improves entry utilization."
+                f"Entering at {entry_road.exits[entry_index]} instead of {entry_road.exits[natural_entry]} improves entry utilization."
             )
             attributed = True
-        elif metrics["entry_value_score"] > metrics["natural_entry_value_score"]:
-            parts.append(f"Entering at {road.exits[entry_index]} improves the entry value score.")
+        elif (
+            metrics["value_score"] >= metrics["natural_value_score"]
+            and metrics["entry_value_score"] > metrics["natural_entry_value_score"]
+        ):
+            parts.append(f"Entering at {entry_road.exits[entry_index]} improves the entry value score.")
             attributed = True
     if exit_index != natural_exit:
         if (
+            metrics["value_score"] >= metrics["natural_value_score"]
+            and
             metrics["unused_ahead"] < metrics["natural_unused_ahead"]
             and metrics["exit_value_score"] > metrics["natural_exit_value_score"]
         ):
             parts.append(
-                f"Exiting at {road.exits[exit_index]} instead of {road.exits[natural_exit]} reduces unused paid distance ahead."
+                f"Exiting at {exit_road.exits[exit_index]} instead of {exit_road.exits[natural_exit]} reduces unused paid distance ahead."
             )
             attributed = True
-        elif metrics["exit_value_score"] > metrics["natural_exit_value_score"]:
-            parts.append(f"Exiting at {road.exits[exit_index]} improves the exit value score.")
+        elif (
+            metrics["value_score"] >= metrics["natural_value_score"]
+            and metrics["exit_value_score"] > metrics["natural_exit_value_score"]
+        ):
+            parts.append(f"Exiting at {exit_road.exits[exit_index]} improves the exit value score.")
             attributed = True
+    if toll_saved > 0 and metrics["value_score"] < metrics["natural_value_score"]:
+        parts.append(
+            f"Recommended because it saves ${net_savings:.2f} net with {added_minutes} extra minutes, even though utilization score is lower."
+        )
+        attributed = True
     if toll_saved > 0 and not attributed:
         parts.append(
             "The matrix price is lower for this entry/exit combination, but the current utilization metrics do not attribute the savings to wasted-behind or unused-ahead segments."
@@ -408,7 +496,13 @@ def _candidate_explanation(
 
 
 def _reject_candidate(candidate: dict) -> bool:
-    return candidate["label"] != "Natural Route" and candidate["net_savings"] < 0.25 and candidate["added_minutes"] > 5
+    if candidate["label"] == "Natural Route":
+        return False
+    if candidate["net_savings"] < 0.25 and candidate["added_minutes"] > 5:
+        return True
+    if candidate["added_minutes"] > 10 and candidate["net_savings"] < 2.0:
+        return True
+    return False
 
 
 def _candidate_sort_key(candidate: dict) -> tuple:
@@ -444,7 +538,22 @@ def _best_by(candidates: list[dict], key):
 
 
 def _same_path(left: dict, right: dict) -> bool:
-    return left["entry"] == right["entry"] and left["exit"] == right["exit"]
+    return (
+        left["route_path_label"] == right["route_path_label"]
+        and left["entry"] == right["entry"]
+        and left["exit"] == right["exit"]
+    )
+
+
+def _unique_user_options(candidates: list[dict]) -> list[dict]:
+    unique = []
+    seen_labels = set()
+    for candidate in candidates:
+        if candidate["label"] in seen_labels:
+            continue
+        unique.append(candidate)
+        seen_labels.add(candidate["label"])
+    return unique[:4]
 
 
 def _confidence(price: float, natural_price: float, net_savings: float, added_minutes: int) -> str:
@@ -621,3 +730,10 @@ def _brain_road_from_matrix(road):
         if item.id == road.road_id:
             return item
     raise HTTPException(status_code=404, detail=f"Unknown NTTA road: {road.road_name}")
+
+
+def _brain_road(road_id: int):
+    for item in matrix_brain_roads():
+        if item.id == road_id:
+            return item
+    raise HTTPException(status_code=404, detail=f"Unknown NTTA road id: {road_id}")

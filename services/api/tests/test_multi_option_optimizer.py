@@ -102,6 +102,7 @@ def test_savings_without_utilization_explanation_is_handled():
 
     explanation = _candidate_explanation(
         Road(),
+        Road(),
         natural_entry=0,
         natural_exit=2,
         entry_index=1,
@@ -115,11 +116,13 @@ def test_savings_without_utilization_explanation_is_handled():
             "natural_wasted_behind": 0,
             "unused_ahead": 0,
             "natural_unused_ahead": 0,
-            "entry_value_score": 80,
-            "natural_entry_value_score": 80,
-            "exit_value_score": 90,
-            "natural_exit_value_score": 90,
-        },
+                "entry_value_score": 80,
+                "natural_entry_value_score": 80,
+                "exit_value_score": 90,
+                "natural_exit_value_score": 90,
+                "value_score": 80,
+                "natural_value_score": 80,
+            },
     )
 
     assert "matrix price is lower" in explanation
